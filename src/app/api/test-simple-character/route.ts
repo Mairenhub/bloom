@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { detectCharacterFromPrompt, generateConsistentPrompt } from "@/lib/openai";
+import { enhancePromptForKlingAI } from "@/lib/openai";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,34 +13,30 @@ export async function POST(req: NextRequest) {
       });
     }
     
-    console.log("🧪 [TEST SIMPLE CHARACTER] Testing character detection:", prompt);
+    console.log("🧪 [TEST SIMPLE CHARACTER] Testing prompt enhancement:", prompt);
     
-    // Step 1: Detect character from prompt
-    const character = detectCharacterFromPrompt(prompt);
-    
-    // Step 2: Generate consistent prompt
-    const enhancedPrompt = generateConsistentPrompt(prompt, character, videoIndex);
+    // Test prompt enhancement
+    const enhanced = await enhancePromptForKlingAI(prompt);
     
     return new Response(JSON.stringify({
       originalPrompt: prompt,
       videoIndex,
-      character,
-      enhancedPrompt,
+      enhancedPrompt: enhanced.enhancedPrompt,
+      reasoning: enhanced.reasoning,
       summary: {
-        characterType: character.characterType,
-        characterName: character.characterName,
-        idCard: character.idCard,
-        promptLength: enhancedPrompt.length
+        originalLength: prompt.length,
+        enhancedLength: enhanced.enhancedPrompt.length,
+        enhancementRatio: (enhanced.enhancedPrompt.length / prompt.length).toFixed(2)
       }
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("💥 [TEST SIMPLE CHARACTER] Error:", error);
     return new Response(JSON.stringify({ 
-      error: error.message || "Failed to test character detection" 
+      error: error instanceof Error ? error.message : "Failed to test character detection" 
     }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
@@ -56,32 +52,28 @@ export async function GET(req: NextRequest) {
     
     console.log("🧪 [TEST SIMPLE CHARACTER] Testing with prompt:", prompt);
     
-    // Step 1: Detect character from prompt
-    const character = detectCharacterFromPrompt(prompt);
-    
-    // Step 2: Generate consistent prompt
-    const enhancedPrompt = generateConsistentPrompt(prompt, character, videoIndex);
+    // Test prompt enhancement
+    const enhanced = await enhancePromptForKlingAI(prompt);
     
     return new Response(JSON.stringify({
       originalPrompt: prompt,
       videoIndex,
-      character,
-      enhancedPrompt,
+      enhancedPrompt: enhanced.enhancedPrompt,
+      reasoning: enhanced.reasoning,
       summary: {
-        characterType: character.characterType,
-        characterName: character.characterName,
-        idCard: character.idCard,
-        promptLength: enhancedPrompt.length
+        originalLength: prompt.length,
+        enhancedLength: enhanced.enhancedPrompt.length,
+        enhancementRatio: (enhanced.enhancedPrompt.length / prompt.length).toFixed(2)
       }
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("💥 [TEST SIMPLE CHARACTER] Error:", error);
     return new Response(JSON.stringify({ 
-      error: error.message || "Failed to test character detection" 
+      error: error instanceof Error ? error.message : "Failed to test character detection" 
     }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }

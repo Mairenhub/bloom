@@ -45,7 +45,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ task
     
     const changes = await updateVideoStatus(taskId, status, videoUrl, errorMessage);
     
-    if (changes === 0) {
+    if (!changes || changes.length === 0) {
       return new Response(JSON.stringify({ error: "Video not found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" }

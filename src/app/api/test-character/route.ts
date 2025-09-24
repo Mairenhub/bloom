@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { analyzeCharacterAndGenerateIdentity, generateKlingAIParams } from "@/lib/openai";
+import { enhancePromptForKlingAI } from "@/lib/openai";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,40 +13,31 @@ export async function POST(req: NextRequest) {
       });
     }
     
-    console.log("🧪 [TEST CHARACTER] Testing character analysis:", prompt);
+    console.log("🧪 [TEST CHARACTER] Testing prompt enhancement:", prompt);
     
-    // Step 1: Analyze character and generate identity
-    const characterIdentity = await analyzeCharacterAndGenerateIdentity(prompt, videoIndex === 0);
-    
-    // Step 2: Generate KlingAI parameters for this video
-    const klingAIParams = await generateKlingAIParams(prompt, characterIdentity, videoIndex, totalVideos);
+    // Test prompt enhancement
+    const enhanced = await enhancePromptForKlingAI(prompt);
     
     return new Response(JSON.stringify({
       originalPrompt: prompt,
       videoIndex,
       totalVideos,
-      characterIdentity,
-      klingAIParams,
+      enhancedPrompt: enhanced.enhancedPrompt,
+      reasoning: enhanced.reasoning,
       summary: {
-        characterName: characterIdentity.characterName,
-        idCard: characterIdentity.idCard,
-        enhancedPrompt: klingAIParams.prompt,
-        modelSettings: {
-          model: klingAIParams.modelName,
-          mode: klingAIParams.mode,
-          duration: klingAIParams.duration,
-          aspectRatio: klingAIParams.aspectRatio
-        }
+        originalLength: prompt.length,
+        enhancedLength: enhanced.enhancedPrompt.length,
+        enhancementRatio: (enhanced.enhancedPrompt.length / prompt.length).toFixed(2)
       }
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("💥 [TEST CHARACTER] Error:", error);
     return new Response(JSON.stringify({ 
-      error: error.message || "Failed to test character analysis" 
+      error: error instanceof Error ? error.message : "Failed to test character analysis" 
     }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
@@ -63,38 +54,29 @@ export async function GET(req: NextRequest) {
     
     console.log("🧪 [TEST CHARACTER] Testing with prompt:", prompt);
     
-    // Step 1: Analyze character and generate identity
-    const characterIdentity = await analyzeCharacterAndGenerateIdentity(prompt, videoIndex === 0);
-    
-    // Step 2: Generate KlingAI parameters for this video
-    const klingAIParams = await generateKlingAIParams(prompt, characterIdentity, videoIndex, totalVideos);
+    // Test prompt enhancement
+    const enhanced = await enhancePromptForKlingAI(prompt);
     
     return new Response(JSON.stringify({
       originalPrompt: prompt,
       videoIndex,
       totalVideos,
-      characterIdentity,
-      klingAIParams,
+      enhancedPrompt: enhanced.enhancedPrompt,
+      reasoning: enhanced.reasoning,
       summary: {
-        characterName: characterIdentity.characterName,
-        idCard: characterIdentity.idCard,
-        enhancedPrompt: klingAIParams.prompt,
-        modelSettings: {
-          model: klingAIParams.modelName,
-          mode: klingAIParams.mode,
-          duration: klingAIParams.duration,
-          aspectRatio: klingAIParams.aspectRatio
-        }
+        originalLength: prompt.length,
+        enhancedLength: enhanced.enhancedPrompt.length,
+        enhancementRatio: (enhanced.enhancedPrompt.length / prompt.length).toFixed(2)
       }
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("💥 [TEST CHARACTER] Error:", error);
     return new Response(JSON.stringify({ 
-      error: error.message || "Failed to test character analysis" 
+      error: error instanceof Error ? error.message : "Failed to test character analysis" 
     }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }

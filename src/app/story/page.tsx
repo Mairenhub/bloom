@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useMemo, useRef, useState, useCallback } from "react";
 import { Plus, ArrowLeftRight, Upload, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,7 +59,6 @@ function useInitialFrames(): Frame[] {
 
 export default function StoryboardPage() {
   const [frames, setFrames] = useState<Frame[]>(useInitialFrames());
-  const [transitions, setTransitions] = useState<Transition[]>([]);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCombining, setIsCombining] = useState(false);
@@ -88,29 +86,6 @@ export default function StoryboardPage() {
   const [downloadLink, setDownloadLink] = useState('');
   const [showResultScreen, setShowResultScreen] = useState(false);
 
-  const validateCode = async () => {
-    if (!code.trim()) return;
-    
-    setIsValidatingCode(true);
-    setCodeValidation(null);
-    
-    try {
-      const response = await fetch('/api/codes/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code.trim() })
-      });
-      
-        const data = await response.json();
-      setCodeValidation(data);
-      
-    } catch (error) {
-      console.error('Error validating code:', error);
-      setCodeValidation({ valid: false, error: 'Failed to validate code' });
-    } finally {
-      setIsValidatingCode(false);
-    }
-  };
 
 
   const updateVideoInDatabase = async (taskId: string, status: string, videoUrl?: string, errorMessage?: string) => {
@@ -514,7 +489,7 @@ export default function StoryboardPage() {
         const taskId = `sb-${frame.id}-${Date.now()}-${i}`;
         
         // Find the enhanced prompt for this transition
-        const enhancedTransition = promptData.transitions.find((t: any) => 
+        const enhancedTransition = promptData.transitions.find((t: { fromFrameId: string; toFrameId: string }) => 
           t.fromFrameId === frame.id && t.toFrameId === nextFrame.id
         );
         
@@ -1032,7 +1007,12 @@ export default function StoryboardPage() {
                       setDownloadLink('');
                       setEmail('');
                       // Reset the entire state for a new video
-                      setFrames(useInitialFrames());
+                      setFrames([
+                        { id: '1', image: undefined },
+                        { id: '2', image: undefined },
+                        { id: '3', image: undefined },
+                        { id: '4', image: undefined }
+                      ]);
                       setTasks([]);
                       setCombinedVideo(null);
                       setTransitionPrompts({});

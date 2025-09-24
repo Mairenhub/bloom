@@ -92,10 +92,10 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json" }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("💥 [EMAIL API] Error:", error);
     return new Response(JSON.stringify({ 
-      error: error?.message || "Failed to send email" 
+      error: error instanceof Error ? error.message : "Failed to send email" 
     }), { status: 500 });
   }
 }

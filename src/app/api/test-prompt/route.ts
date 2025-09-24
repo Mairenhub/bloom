@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { enhancePromptForKlingAI, enhancePromptWithAdvancedTraining } from "@/lib/openai";
+import { enhancePromptForKlingAI } from "@/lib/openai";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,29 +15,29 @@ export async function POST(req: NextRequest) {
     
     console.log("🧪 [TEST PROMPT] Testing prompt enhancement:", prompt);
     
-    // Test both methods
-    const aiEnhanced = await enhancePromptForKlingAI(prompt);
-    const advancedEnhanced = enhancePromptWithAdvancedTraining(prompt);
+    // Test prompt enhancement
+    const enhanced = await enhancePromptForKlingAI(prompt);
     
     return new Response(JSON.stringify({
       originalPrompt: prompt,
-      aiEnhanced: {
-        prompt: aiEnhanced.enhancedPrompt,
-        reasoning: aiEnhanced.reasoning
+      enhanced: {
+        prompt: enhanced.enhancedPrompt,
+        reasoning: enhanced.reasoning
       },
-      advancedEnhanced: {
-        prompt: advancedEnhanced,
-        reasoning: "Advanced pattern matching applied"
+      summary: {
+        originalLength: prompt.length,
+        enhancedLength: enhanced.enhancedPrompt.length,
+        enhancementRatio: (enhanced.enhancedPrompt.length / prompt.length).toFixed(2)
       }
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("💥 [TEST PROMPT] Error:", error);
     return new Response(JSON.stringify({ 
-      error: error.message || "Failed to test prompt enhancement" 
+      error: error instanceof Error ? error.message : "Failed to test prompt enhancement" 
     }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
@@ -52,28 +52,28 @@ export async function GET(req: NextRequest) {
     
     console.log("🧪 [TEST PROMPT] Testing with prompt:", prompt);
     
-    const aiEnhanced = await enhancePromptForKlingAI(prompt);
-    const advancedEnhanced = enhancePromptWithAdvancedTraining(prompt);
+    const enhanced = await enhancePromptForKlingAI(prompt);
     
     return new Response(JSON.stringify({
       originalPrompt: prompt,
-      aiEnhanced: {
-        prompt: aiEnhanced.enhancedPrompt,
-        reasoning: aiEnhanced.reasoning
+      enhanced: {
+        prompt: enhanced.enhancedPrompt,
+        reasoning: enhanced.reasoning
       },
-      advancedEnhanced: {
-        prompt: advancedEnhanced,
-        reasoning: "Advanced pattern matching applied"
+      summary: {
+        originalLength: prompt.length,
+        enhancedLength: enhanced.enhancedPrompt.length,
+        enhancementRatio: (enhanced.enhancedPrompt.length / prompt.length).toFixed(2)
       }
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("💥 [TEST PROMPT] Error:", error);
     return new Response(JSON.stringify({ 
-      error: error.message || "Failed to test prompt enhancement" 
+      error: error instanceof Error ? error.message : "Failed to test prompt enhancement" 
     }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
