@@ -30,11 +30,6 @@ export function buildJWTToken(): string | undefined {
   const accessKey = process.env.NEXT_PUBLIC_KLING_ACCESS_KEY;
   const secretKey = process.env.NEXT_PUBLIC_KLING_SECRET_KEY;
   
-  console.log("🔧 [KLING DEBUG] JWT Auth check:");
-  console.log("  - Access Key exists:", !!accessKey);
-  console.log("  - Secret Key exists:", !!secretKey);
-  console.log("  - Access Key length:", accessKey?.length || 0);
-  console.log("  - Secret Key length:", secretKey?.length || 0);
   
   if (!accessKey || !secretKey) {
     console.log("❌ [KLING DEBUG] Missing credentials - returning undefined");
@@ -54,7 +49,7 @@ export function buildJWTToken(): string | undefined {
     };
     
     const token = jwt.sign(payload, secretKey, { header: headers });
-    console.log("✅ [KLING DEBUG] JWT token created successfully");
+
     return token;
   } catch (error) {
     console.log("❌ [KLING DEBUG] JWT token creation failed:", error);
@@ -63,32 +58,25 @@ export function buildJWTToken(): string | undefined {
 }
 
 export function createKlingHeaders(): HeadersInit {
-  console.log("🔧 [KLING DEBUG] Creating headers...");
+
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
   const jwtToken = buildJWTToken();
   if (jwtToken) {
     headers["Authorization"] = `Bearer ${jwtToken}`;
-    console.log("✅ [KLING DEBUG] JWT Bearer authorization header added");
   } else {
     console.log("⚠️ [KLING DEBUG] No JWT authorization header added");
   }
-  console.log("🔧 [KLING DEBUG] Final headers:", headers);
   return headers;
 }
 
 export function stripDataUrlPrefix(possiblyDataUrl: string): string {
   // If value is a data URL like: data:image/png;base64,XXXXX → return only the base64 payload
-  console.log("🔧 [KLING DEBUG] Processing image URL:");
-  console.log("  - Input length:", possiblyDataUrl.length);
-  console.log("  - Starts with 'data:':", possiblyDataUrl.startsWith("data:"));
-  console.log("  - First 50 chars:", possiblyDataUrl.substring(0, 50));
   
   const commaIndex = possiblyDataUrl.indexOf(",");
   if (possiblyDataUrl.startsWith("data:") && commaIndex !== -1) {
     const result = possiblyDataUrl.slice(commaIndex + 1);
-    console.log("✅ [KLING DEBUG] Stripped data URL prefix, result length:", result.length);
     return result;
   }
   console.log("ℹ️ [KLING DEBUG] No data URL prefix to strip, returning original");

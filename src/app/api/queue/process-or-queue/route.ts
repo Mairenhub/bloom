@@ -60,8 +60,8 @@ export async function POST(req: NextRequest) {
           headers: createKlingHeaders(),
           body: JSON.stringify({
             model_name: "kling-v2-1",
-            image: stripDataUrlPrefix(taskData.image),
-            image_tail: stripDataUrlPrefix(taskData.imageTail),
+            image: taskData.image, 
+            image_tail: taskData.imageTail, 
             prompt: enhancedPrompt,
             negative_prompt: 'no face swap, no different actor, no hairstyle change, no different clothes, no mask, no occlusion of face, no heavy motion blur',
             mode: "pro",

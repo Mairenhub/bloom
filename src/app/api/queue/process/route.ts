@@ -8,7 +8,7 @@ import {
   updateVideoStatus,
   saveVideo
 } from "@/lib/supabase";
-import { enhancePromptForKlingAI, detectCharacterFromPrompt, generateConsistentPrompt } from "@/lib/openai";
+import { enhancePromptForKlingAI } from "@/lib/openai";
 
 const MAX_CONCURRENT_TASKS = 3;
 const ACCOUNT_ID = 'default';
@@ -64,43 +64,37 @@ export async function POST(req: NextRequest) {
           
           // Extract task data
           const taskData = task.task_data;
-          const { frameId, sessionId, image, imageTail, prompt, negativePrompt, mode, duration, aspectRatio, videoIndex, totalVideos, character } = taskData;
+          const { frameId, sessionId, image, imageTail, prompt, negativePrompt, mode, duration, aspectRatio, videoIndex, totalVideos } = taskData;
           
-          // Detect character from prompt if this is the first video in the session
-          let currentCharacter = character;
-          if (!currentCharacter && videoIndex === 0) {
-            console.log("🔍 [QUEUE PROCESSOR] Detecting character from first video prompt");
-            currentCharacter = detectCharacterFromPrompt(prompt);
-            console.log("✅ [QUEUE PROCESSOR] Detected character:", currentCharacter);
-          } else if (!currentCharacter && videoIndex > 0) {
-            // For subsequent videos, we need to get the character from the first video
-            console.log("🔍 [QUEUE PROCESSOR] Getting character from first video in session");
-            // TODO: Implement logic to get character from first video in session
-            // For now, use a default character
-            currentCharacter = { type: 'person', name: 'HERO-01', idCard: 'HERO-01: same person across all clips' };
-          }
+          // Enhance the prompt using OpenAI
+          console.log("🤖 [QUEUE PROCESSOR] Enhancing prompt:", prompt);
+          const enhancedPromptResult = await enhancePromptForKlingAI(prompt, {
+            fromImage: image,
+            toImage: imageTail,
+            duration: duration || 5,
+            style: mode || "std"
+          });
           
-          // Generate consistent prompt with character continuity
-          console.log("🎬 [QUEUE PROCESSOR] Generating consistent prompt for video", (videoIndex || 0) + 1);
-          const enhancedPrompt = generateConsistentPrompt(prompt, currentCharacter, videoIndex || 0);
+          const enhancedPrompt = enhancedPromptResult.enhancedPrompt;
+          console.log("✅ [QUEUE PROCESSOR] Enhanced prompt:", enhancedPrompt);
           
-          console.log("✅ [QUEUE PROCESSOR] Generated consistent prompt:", enhancedPrompt);
+          // Call KlingAI API directly
+          const { getKlingBaseUrl, createKlingHeaders } = await import('@/lib/kling');
           
-          // Call Kling API to generate video with consistent character
-          const klingResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/kling/image2video`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+          const klingUrl = `${getKlingBaseUrl()}/v1/videos/image2video`;
+          console.log("🌐 [QUEUE PROCESSOR] Calling KlingAI API at:", klingUrl);
+          
+          const klingResponse = await fetch(klingUrl, {
+            method: "POST",
+            headers: createKlingHeaders(),
             body: JSON.stringify({
-              model_name: "kling-v1-6",
-              image,
-              image_tail: imageTail,
+              model_name: "kling-v2-1",
+              image: image, // Already base64 string
+              image_tail: imageTail, // Already base64 string
               prompt: enhancedPrompt,
-              negative_prompt: currentCharacter.negativePrompt,
+              negative_prompt: 'no face swap, no different actor, no hairstyle change, no different clothes, no mask, no occlusion of face, no heavy motion blur',
               mode: "pro",
               duration: "5",
-              aspect_ratio: "16:9",
               external_task_id: task.task_id
             })
           });
@@ -111,18 +105,31 @@ export async function POST(req: NextRequest) {
           }
           
           const klingResult = await klingResponse.json();
-          console.log("🎬 [QUEUE PROCESSOR] Kling API response:", klingResult);
+          console.log("🎬 [QUEUE PROCESSOR] KlingAI API response:", klingResult);
           
           if (klingResult.code !== 0) {
-            throw new Error(`Kling API error: ${klingResult.message}`);
+            throw new Error(`KlingAI API error: ${klingResult.message}`);
           }
           
-          // Save initial video record
+          // Extract task information from the response
+          const klingTaskId = klingResult.data?.task_id;
+          const taskStatus = klingResult.data?.task_status;
+          
+          if (!klingTaskId) {
+            throw new Error("No task_id returned from KlingAI API");
+          }
+          
+          console.log("✅ [QUEUE PROCESSOR] Task created successfully:", {
+            klingTaskId,
+            taskStatus
+          });
+          
+          // Save initial video record with the KlingAI task ID
           await saveVideo({
-            taskId: task.task_id,
+            taskId: klingTaskId,
             frameId,
             sessionId,
-            status: 'submitted'
+            status: taskStatus
           });
           
           // Mark task as completed in queue

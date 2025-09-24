@@ -455,3 +455,87 @@ export async function getActiveProcessingCount(accountId: string = 'default') {
   console.log("📄 [SUPABASE DEBUG] Active processing count:", count);
   return count || 0;
 }
+
+// Code management functions
+export async function validateCode(code: string) {
+  console.log("🔍 [SUPABASE DEBUG] Validating code:", code);
+  
+  const { data, error } = await supabase
+    .from('codes')
+    .select('*')
+    .eq('code', code)
+    .eq('is_redeemed', false)
+    .single();
+  
+  if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+    console.error("❌ [SUPABASE DEBUG] Error validating code:", error);
+    throw error;
+  }
+  
+  if (!data) {
+    console.log("❌ [SUPABASE DEBUG] Code not found or already redeemed");
+    return null;
+  }
+  
+  // Check if code is expired
+  if (data.expires_at && new Date(data.expires_at) < new Date()) {
+    console.log("❌ [SUPABASE DEBUG] Code has expired");
+    return null;
+  }
+  
+  console.log("✅ [SUPABASE DEBUG] Code is valid:", data);
+  return data;
+}
+
+export async function redeemCode(code: string, redeemedBy: string) {
+  console.log("🔍 [SUPABASE DEBUG] Redeeming code:", code, "by:", redeemedBy);
+  
+  const { data, error } = await supabase
+    .from('codes')
+    .update({
+      is_redeemed: true,
+      redeemed_at: new Date().toISOString(),
+      redeemed_by: redeemedBy
+    })
+    .eq('code', code)
+    .eq('is_redeemed', false)
+    .select()
+    .single();
+  
+  if (error) {
+    console.error("❌ [SUPABASE DEBUG] Error redeeming code:", error);
+    throw error;
+  }
+  
+  if (!data) {
+    throw new Error("Code not found or already redeemed");
+  }
+  
+  console.log("✅ [SUPABASE DEBUG] Code redeemed successfully:", data);
+  return data;
+}
+
+export async function createCode(packageType: string, metadata?: any) {
+  console.log("🔍 [SUPABASE DEBUG] Creating code for package:", packageType);
+  
+  // Generate a random code (8 characters, alphanumeric)
+  const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+  
+  const { data, error } = await supabase
+    .from('codes')
+    .insert({
+      code,
+      package_type: packageType,
+      metadata: metadata || {}
+    })
+    .select()
+    .single();
+  
+  if (error) {
+    console.error("❌ [SUPABASE DEBUG] Error creating code:", error);
+    throw error;
+  }
+  
+  console.log("✅ [SUPABASE DEBUG] Code created successfully:", data);
+  return data;
+}

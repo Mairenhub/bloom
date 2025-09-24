@@ -42,6 +42,19 @@ CREATE TABLE IF NOT EXISTS video_queue (
   account_id TEXT DEFAULT 'default' -- for future multi-tenant support
 );
 
+-- Create codes table for redeemable video generation codes
+CREATE TABLE IF NOT EXISTS codes (
+  id BIGSERIAL PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  package_type TEXT NOT NULL, -- '5-photos' or '10-photos'
+  is_redeemed BOOLEAN DEFAULT FALSE,
+  redeemed_at TIMESTAMP WITH TIME ZONE,
+  redeemed_by TEXT, -- IP address or user identifier
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  expires_at TIMESTAMP WITH TIME ZONE, -- optional expiration
+  metadata JSONB -- additional data like source, campaign, etc.
+);
+
 -- Fix existing table if session_id column has NOT NULL constraint
 ALTER TABLE video_queue ALTER COLUMN session_id DROP NOT NULL;
 
@@ -54,17 +67,22 @@ CREATE INDEX IF NOT EXISTS idx_video_queue_status ON video_queue(status);
 CREATE INDEX IF NOT EXISTS idx_video_queue_priority ON video_queue(priority DESC, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_video_queue_account_id ON video_queue(account_id);
 CREATE INDEX IF NOT EXISTS idx_video_queue_session_id ON video_queue(session_id);
+CREATE INDEX IF NOT EXISTS idx_codes_code ON codes(code);
+CREATE INDEX IF NOT EXISTS idx_codes_is_redeemed ON codes(is_redeemed);
+CREATE INDEX IF NOT EXISTS idx_codes_package_type ON codes(package_type);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE video_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE video_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE codes ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for public access (adjust as needed for your security requirements)
 -- Drop existing policies first to avoid conflicts
 DROP POLICY IF EXISTS "Allow all operations on videos" ON videos;
 DROP POLICY IF EXISTS "Allow all operations on video_sessions" ON video_sessions;
 DROP POLICY IF EXISTS "Allow all operations on video_queue" ON video_queue;
+DROP POLICY IF EXISTS "Allow all operations on codes" ON codes;
 
 -- Create policies
 CREATE POLICY "Allow all operations on videos" ON videos
@@ -74,6 +92,9 @@ CREATE POLICY "Allow all operations on video_sessions" ON video_sessions
   FOR ALL USING (true);
 
 CREATE POLICY "Allow all operations on video_queue" ON video_queue
+  FOR ALL USING (true);
+
+CREATE POLICY "Allow all operations on codes" ON codes
   FOR ALL USING (true);
 
 -- Create storage bucket for videos
