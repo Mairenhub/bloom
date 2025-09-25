@@ -126,13 +126,50 @@ export default function StoryboardPage() {
       }
     }
 
-      // Submit to server-side batch processing
+      // Upload images to storage first to avoid large request body
+      console.log('📤 [STORY] Uploading images to storage...');
+      const uploadedFramePairs = await Promise.all(
+        framePairs.map(async ([frame, nextFrame]) => {
+          // Upload both images to storage
+          const fromImageResponse = await fetch('/api/images/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              imageBase64: frame.imageBase64,
+              filename: `frame-${frame.id}-${Date.now()}.jpg`
+            })
+          });
+          
+          const toImageResponse = await fetch('/api/images/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              imageBase64: nextFrame.imageBase64,
+              filename: `frame-${nextFrame.id}-${Date.now()}.jpg`
+            })
+          });
+          
+          if (!fromImageResponse.ok || !toImageResponse.ok) {
+            throw new Error('Failed to upload images to storage');
+          }
+          
+          const fromImageData = await fromImageResponse.json();
+          const toImageData = await toImageResponse.json();
+          
+          return [
+            { ...frame, imageUrl: fromImageData.url },
+            { ...nextFrame, imageUrl: toImageData.url }
+          ];
+        })
+      );
+
+      // Submit to server-side batch processing with image URLs instead of base64
       const response = await fetch('/api/queue/submit-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: `session-${Date.now()}`,
-          framePairs,
+          framePairs: uploadedFramePairs,
           transitionPrompts,
           duration: parseInt(duration),
           aspectRatio,
