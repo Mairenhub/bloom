@@ -21,7 +21,6 @@ export async function uploadVideo(file: File, taskId: string): Promise<string> {
   const { data, error } = await supabase.storage
     .from('videos')
     .upload(`${taskId}.mp4`, file, {
-      cacheControl: '3600',
       upsert: true
     });
   
@@ -616,8 +615,7 @@ export async function uploadImage(file: File, userId: string): Promise<{ path: s
     .from('uploads')
     .upload(key, file, {
       contentType: file.type,
-      upsert: false,
-      cacheControl: '3600'
+      upsert: false
     });
   
   if (error) {
