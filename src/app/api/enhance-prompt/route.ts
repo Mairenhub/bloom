@@ -4,7 +4,7 @@ import { enhancePromptForKlingAI, generateBatchPrompts, type TransitionPrompt } 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, action = "enhance", context, transitions } = body;
+    const { prompt, action = "enhance", transitions } = body;
     
     console.log("🤖 [PROMPT API] Processing request:", { action, prompt, transitionsCount: transitions?.length });
     
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     let result;
     
     if (action === "enhance") {
-      result = await enhancePromptForKlingAI(prompt, context);
+      result = await enhancePromptForKlingAI(prompt);
     } else {
       return new Response(JSON.stringify({ error: "Invalid action. Use 'enhance' or 'batch'" }), {
         status: 400,

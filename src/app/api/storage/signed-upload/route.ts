@@ -26,10 +26,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabaseAdmin
       .storage
       .from('uploads')
-      .createSignedUploadUrl(key, {
-        upsert: false, // Don't allow overwriting
-        cacheControl: '3600'
-      });
+      .createSignedUploadUrl(key);
 
     if (error) {
       console.error('❌ [SIGNED UPLOAD] Error creating signed URL:', error);

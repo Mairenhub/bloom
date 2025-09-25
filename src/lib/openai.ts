@@ -151,9 +151,9 @@ Return JSON array: [{"fromFrameId": "...", "toFrameId": "...", "enhancedPrompt":
     let enhancedTransitions;
     try {
       enhancedTransitions = JSON.parse(response);
-    } catch (parseError) {
+    } catch (error) {
       // If not JSON, fall back to basic training
-      console.log("⚠️ [OPENAI DEBUG] Could not parse JSON, using basic training");
+      console.log("⚠️ [OPENAI DEBUG] Could not parse JSON, using basic training:", error);
       enhancedTransitions = transitions.map(t => ({
         fromFrameId: t.fromFrameId,
         toFrameId: t.toFrameId,
