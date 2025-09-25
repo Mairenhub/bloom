@@ -22,30 +22,6 @@ type Transition = {
   text: string;
 };
 
-type TaskInfo = {
-  frameId: string;
-  taskId: string;
-  status: "queued" | "submitted" | "processing" | "succeed" | "failed";
-  url?: string;
-  error?: string;
-  originalPrompt?: string;
-  enhancedPrompt?: string;
-  characterIdentity?: {
-    characterName: string;
-    idCard: string;
-    description: string;
-    outfit: string;
-  };
-  videoIndex?: number;
-  totalVideos?: number;
-};
-
-type CombinedVideo = {
-  id: string;
-  url: string;
-  status: "processing" | "succeed" | "failed";
-  error?: string;
-};
 
 function useInitialFrames(): Frame[] {
   return useMemo(
@@ -59,15 +35,10 @@ function useInitialFrames(): Frame[] {
 
 export default function StoryboardPage() {
   const [frames, setFrames] = useState<Frame[]>(useInitialFrames());
-  const [tasks, setTasks] = useState<TaskInfo[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isCombining, setIsCombining] = useState(false);
-  const [combinedVideo, setCombinedVideo] = useState<CombinedVideo | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [duration, setDuration] = useState("5");
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [transitionPrompts, setTransitionPrompts] = useState<{ [key: string]: string }>({});
-  const pollers = useRef<{ [key: string]: NodeJS.Timeout }>({});
   
   // Code redemption state
   const [code, setCode] = useState('');
@@ -77,7 +48,7 @@ export default function StoryboardPage() {
     packageType?: string;
     error?: string;
   } | null>(null);
-  
+
   // Email and result state
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [email, setEmail] = useState('');
@@ -85,328 +56,53 @@ export default function StoryboardPage() {
   const [emailSent, setEmailSent] = useState(false);
   const [downloadLink, setDownloadLink] = useState('');
   const [showResultScreen, setShowResultScreen] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
 
 
 
-  const updateVideoInDatabase = async (taskId: string, status: string, videoUrl?: string, errorMessage?: string) => {
-    try {
-      const response = await fetch(`/api/videos/${encodeURIComponent(taskId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId,
-          status,
-          videoUrl,
-          errorMessage
-        })
-      });
-      
-      if (!response.ok) {
-        console.error("❌ [UI DEBUG] Error updating video:", await response.text());
-      }
-    } catch (error) {
-      console.error("❌ [UI DEBUG] Error updating video:", error);
-    }
-  };
 
-  const pollTask = async (task: TaskInfo) => {
-    // Don't poll failed tasks
-    if (task.status === "failed") return;
-    
-    try {
-      let status: TaskInfo["status"] = task.status;
-      let url: string | undefined = task.url;
-      
-      if (task.status === "queued") {
-        // For queued tasks, check the video database for updated status
-        const videoRes = await fetch(`/api/videos/${encodeURIComponent(task.taskId)}`);
-        if (videoRes.ok) {
-          const videoData = await videoRes.json();
-          const videoStatus = videoData.video?.status;
-          const videoUrl = videoData.video?.video_url;
-          
-          if (videoStatus && videoStatus !== task.status) {
-            status = videoStatus;
-            url = videoUrl;
-            
-            // If the task has been processed and now has a KlingAI task ID, update the task ID
-            if (videoStatus === 'submitted' || videoStatus === 'processing') {
-              const klingTaskId = videoData.video?.task_id;
-              if (klingTaskId && klingTaskId !== task.taskId) {
-                console.log("🔄 [POLL DEBUG] Task moved from queue to KlingAI:", task.taskId, "->", klingTaskId);
-                // Update the task ID in the local state
-                setTasks(prev => prev.map(t => 
-                  t.taskId === task.taskId ? { ...t, taskId: klingTaskId, status: videoStatus, url: videoUrl } : t
-                ));
-                return; // Exit early since we've updated the task
-              }
-            }
-          }
-        }
-      } else if (task.status === "submitted") {
-        // For submitted tasks, check KlingAI API status
-        console.log("🔍 [POLL DEBUG] Checking KlingAI status for submitted task:", task.taskId);
-        try {
-          const klingRes = await fetch(`/api/kling/image2video/${encodeURIComponent(task.taskId)}`);
-          if (klingRes.ok) {
-            const klingData = await klingRes.json();
-            console.log("📡 [POLL DEBUG] KlingAI response:", klingData);
-            
-            if (klingData.code === 0 && klingData.data) {
-              status = klingData.data.task_status;
-              if (klingData.data.task_result?.videos?.[0]?.url) {
-                url = klingData.data.task_result.videos[0].url;
-              }
-              console.log("✅ [POLL DEBUG] Updated status from KlingAI:", status, "URL:", url);
-            } else {
-              console.log("⚠️ [POLL DEBUG] KlingAI returned error:", klingData.message);
-            }
-          } else {
-            console.log("❌ [POLL DEBUG] KlingAI API error:", klingRes.status);
-          }
-        } catch (klingError) {
-          console.error("❌ [POLL DEBUG] Error calling KlingAI API:", klingError);
-        }
-      }
-      
-      // Update local state only if there's actually a change
-      setTasks((prev) => {
-        const currentTask = prev.find(t => t.taskId === task.taskId);
-        if (currentTask && (currentTask.status !== status || currentTask.url !== url)) {
-          return prev.map((t) => (t.taskId === task.taskId ? { ...t, status, url } : t));
-        }
-        return prev;
-      });
-      
-      // If video is ready, download and store it
-      if (status === "succeed" && url) {
-        await downloadAndStoreVideo(task.taskId, url);
-      }
-      
-      // Update database
-      await updateVideoInDatabase(task.taskId, status, url);
-      
-      if (status === "succeed" || status === "failed") {
-        if (pollers.current[task.taskId]) {
-          clearInterval(pollers.current[task.taskId]);
-          delete pollers.current[task.taskId];
-        }
-        
-        // Trigger queue processing to start next queued task
-        try {
-          const queueResponse = await fetch('/api/queue/process', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          
-          if (queueResponse.ok) {
-            const queueResult = await queueResponse.json();
-            console.log("🔄 [POLL DEBUG] Queue processing triggered after task completion:", queueResult);
-          }
-        } catch (queueError) {
-          console.error("❌ [POLL DEBUG] Error triggering queue processing after completion:", queueError);
-        }
-        
-        // Check if all videos are complete and trigger combination
-        await checkAndCombineVideos();
-      }
-    } catch (error) {
-      console.error("Error polling task:", error);
-      const errorMessage = "Polling failed";
-      
-      // Update local state only if there's actually a change
-      setTasks((prev) => {
-        const currentTask = prev.find(t => t.taskId === task.taskId);
-        if (currentTask && currentTask.status !== "failed") {
-          return prev.map((t) => (t.taskId === task.taskId ? { ...t, status: "failed", error: errorMessage } : t));
-        }
-        return prev;
-      });
-      
-      // Update database
-      await updateVideoInDatabase(task.taskId, "failed", undefined, errorMessage);
-      
-      if (pollers.current[task.taskId]) {
-        clearInterval(pollers.current[task.taskId]);
-        delete pollers.current[task.taskId];
-      }
-      
-      // Trigger queue processing to start next queued task
-      try {
-        const queueResponse = await fetch('/api/queue/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (queueResponse.ok) {
-          const queueResult = await queueResponse.json();
-          console.log("🔄 [POLL DEBUG] Queue processing triggered after task failure:", queueResult);
-        }
-      } catch (queueError) {
-        console.error("❌ [POLL DEBUG] Error triggering queue processing after failure:", queueError);
-      }
-      
-      // Check if all videos are complete and trigger combination
-      await checkAndCombineVideos();
-    }
-  };
 
-  const downloadAndStoreVideo = async (taskId: string, videoUrl: string) => {
-    try {
-      console.log("📥 [UI DEBUG] Downloading video:", videoUrl);
-      
-      const response = await fetch(videoUrl);
-      if (!response.ok) throw new Error("Failed to download video");
-      
-      const blob = await response.blob();
-      const file = new File([blob], `${taskId}.mp4`, { type: 'video/mp4' });
-      
-      // Upload to Supabase storage
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('taskId', taskId);
-      
-      const uploadResponse = await fetch('/api/videos/upload', {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (uploadResponse.ok) {
-        const uploadData = await uploadResponse.json();
-        console.log("✅ [UI DEBUG] Video uploaded:", uploadData);
-        
-        // Update the task with the new URL
-        setTasks(prev => prev.map(t => 
-          t.taskId === taskId ? { ...t, url: uploadData.url } : t
-        ));
-        
-        // Update database with new URL
-        await updateVideoInDatabase(taskId, "succeed", uploadData.url);
-      }
-    } catch (error) {
-      console.error("❌ [UI DEBUG] Error downloading/storing video:", error);
-    }
-  };
 
-  const checkAndCombineVideos = async () => {
-    const allTasks = tasks.filter(t => t.frameId !== 'combined');
-    const completedTasks = allTasks.filter(t => t.status === "succeed");
-    
-    console.log("🔍 [UI DEBUG] Checking combination:", {
-      total: allTasks.length,
-      completed: completedTasks.length
-    });
-    
-    if (allTasks.length > 0 && allTasks.length === completedTasks.length) {
-      console.log("🎬 [UI DEBUG] All videos complete, starting combination");
-      await combineVideos();
-    }
-  };
 
-  const combineVideos = async () => {
-    setIsCombining(true);
-    
-    try {
-      const videoUrls = tasks
-        .filter(t => t.status === "succeed" && t.url)
-        .sort((a, b) => {
-          const aIndex = parseInt(a.frameId);
-          const bIndex = parseInt(b.frameId);
-          return aIndex - bIndex;
-        })
-        .map(t => t.url!);
-      
-      console.log("🎬 [UI DEBUG] Combining videos:", videoUrls);
-      
-      const response = await fetch('/api/videos/combine', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoUrls,
-          sessionId: sessionId || 'default',
-          duration: parseInt(duration),
-          aspectRatio
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error("Failed to combine videos");
-      }
-      
-      const result = await response.json();
-      console.log("✅ [UI DEBUG] Combination result:", result);
-      
-      setCombinedVideo({
-        id: result.taskId,
-        url: result.url,
-        status: result.status
-      });
-      
-      // Add combined video as a task
-      setTasks(prev => [...prev, {
-        frameId: 'combined',
-        taskId: result.taskId,
-        status: result.status,
-        url: result.url
-      }]);
-
-      // Show email modal for download link
-      if (result.status === 'succeed' && result.url) {
-        setDownloadLink(result.url);
-        setShowEmailModal(true);
-      }
-      
-    } catch (error) {
-      console.error("❌ [UI DEBUG] Error combining videos:", error);
-      setCombinedVideo({
-        id: 'error',
-        url: '',
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    } finally {
-      setIsCombining(false);
-    }
-  };
 
   const handleGenerate = async () => {
-    // First validate the code if not already validated
-    if (!codeValidation?.valid) {
-      if (!code.trim()) {
-        alert('Please enter a code first');
-        return;
-      }
-      
-      // Validate the code
-      setIsValidatingCode(true);
-      try {
-        const response = await fetch('/api/codes/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: code.trim() })
-        });
-        
-        const data = await response.json();
-        setCodeValidation(data);
-        
-        if (!data.valid) {
-          alert(data.error || 'Invalid code');
-          setIsValidatingCode(false);
-          return;
-        }
-      } catch (error) {
-        console.error('Error validating code:', error);
-        alert('Failed to validate code');
-        setIsValidatingCode(false);
-        return;
-      } finally {
-        setIsValidatingCode(false);
-      }
+    // Show modal for code validation and email input
+    setShowEmailModal(true);
+  };
+
+  const handleModalSubmit = async () => {
+    // Validate code first
+    if (!code.trim()) {
+      alert('Please enter a code first');
+      return;
     }
 
-    if (!window.confirm("Ben je zeker? Dit zal de beelden naar KlingAI sturen.")) return;
+    setIsValidatingCode(true);
+    setSubmissionStatus('submitting');
+
+    try {
+      // Validate the code
+      const codeResponse = await fetch('/api/codes/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code.trim() })
+      });
+      
+      const codeResult = await codeResponse.json();
+      setCodeValidation(codeResult);
+      
+      if (!codeResult.valid) {
+        alert(codeResult.error || 'Invalid code');
+        setSubmissionStatus('error');
+        return;
+      }
+
     const candidates = frames.filter((f) => f.image);
-    if (candidates.length < 2) return;
+      if (candidates.length < 2) {
+        alert('Please upload at least 2 images');
+        setSubmissionStatus('error');
+        return;
+      }
 
     // Validate that all transitions have prompts
     const framePairs = [];
@@ -419,165 +115,62 @@ export default function StoryboardPage() {
       const prompt = transitionPrompts[transitionKey];
       if (!prompt || prompt.trim().length < 10) {
         alert(`Please enter a detailed prompt for the transition from Frame ${frame.id} to Frame ${nextFrame.id}`);
+          setSubmissionStatus('error');
         return;
       }
     }
 
-    setIsGenerating(true);
-    // Don't clear previous tasks - they're now persisted in database
-
-    try {
-      // Redeem the code first
-      const redeemResponse = await fetch('/api/codes/redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code.trim() })
-      });
-      
-      if (!redeemResponse.ok) {
-        throw new Error('Failed to redeem code');
-      }
-      
-      const redeemedData = await redeemResponse.json();
-      console.log('Code redeemed:', redeemedData);
-
-      // Create a new session
-      const newSessionId = `session-${Date.now()}`;
-      setSessionId(newSessionId);
-      
-      // Create frame pairs for transitions
-      const framePairs = [];
-      for (let i = 0; i < candidates.length - 1; i++) {
-        framePairs.push([candidates[i], candidates[i + 1]]);
-      }
-
-      console.log("🚀 [UI DEBUG] Creating tasks for frame pairs:", framePairs.length);
-      
-      // First, generate all prompts in batch
-      const transitions = framePairs.map(([frame, nextFrame]) => {
-        const transitionKey = `${frame.id}-${nextFrame.id}`;
-        return {
-          fromFrameId: frame.id,
-          toFrameId: nextFrame.id,
-          userInput: transitionPrompts[transitionKey] || "Create a smooth transition from this image to the next"
-        };
-      });
-
-      console.log("🤖 [UI DEBUG] Generating batch prompts for transitions:", transitions.length);
-      
-      const promptResponse = await fetch('/api/enhance-prompt', {
+      // Submit to server-side batch processing
+      const response = await fetch('/api/queue/submit-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'batch',
-          transitions
+          sessionId: `session-${Date.now()}`,
+          framePairs,
+          transitionPrompts,
+          duration: parseInt(duration),
+          aspectRatio,
+          code: code.trim(),
+          email: email || undefined
         })
       });
 
-      if (!promptResponse.ok) {
-        throw new Error('Failed to generate prompts');
+      if (!response.ok) {
+        throw new Error('Failed to submit video generation request');
       }
 
-        const promptData = await promptResponse.json();
-      console.log("✅ [UI DEBUG] Generated prompts:", promptData);
+      const result = await response.json();
+      setSubmissionStatus('submitted');
+      setShowEmailModal(false);
+      setShowResultScreen(true);
 
-      // Create tasks for each frame pair
-      const newTasks: TaskInfo[] = [];
-      
-      for (let i = 0; i < framePairs.length; i++) {
-        const [frame, nextFrame] = framePairs[i];
-        const taskId = `sb-${frame.id}-${Date.now()}-${i}`;
-        
-        // Find the enhanced prompt for this transition
-        const enhancedTransition = promptData.transitions.find((t: { fromFrameId: string; toFrameId: string }) => 
-          t.fromFrameId === frame.id && t.toFrameId === nextFrame.id
-        );
-        
-        const taskData = {
-          frameId: frame.id,
-          sessionId: newSessionId,
-          image: frame.imageBase64, // Use base64 string for API
-          imageTail: nextFrame.imageBase64, // Use base64 string for API
-          prompt: enhancedTransition?.enhancedPrompt || `Create a smooth transition from this image to the next`,
-          negativePrompt: "no face swap, no different actor, no hairstyle change, no different clothes, no mask, no occlusion of face, no heavy motion blur",
-          mode: "pro",
-          duration: duration || "5",
-          aspectRatio: aspectRatio || "16:9",
-          videoIndex: i,
-          totalVideos: framePairs.length,
-          packageType: redeemedData.packageType
-        };
-
-        try {
-          const response = await fetch('/api/queue/process-or-queue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              taskId,
-              sessionId: newSessionId,
-              frameId: frame.id,
-              priority: 0,
-              taskData,
-              accountId: 'default'
-            })
-          });
-
-          if (response.ok) {
-            const result = await response.json();
-            const newTask: TaskInfo = {
-              frameId: frame.id,
-              taskId: result.taskId,
-              status: result.processed ? 'submitted' : 'queued',
-              originalPrompt: taskData.prompt,
-              enhancedPrompt: enhancedTransition?.enhancedPrompt,
-              videoIndex: i,
-              totalVideos: framePairs.length,
-            };
-            
-            newTasks.push(newTask);
-            
-            // Start polling for this task
-            if (result.processed) {
-              pollers.current[result.taskId] = setInterval(() => {
-                pollTask(newTask);
-              }, 10000); // Increased to 10 seconds to reduce polling frequency
-            }
-        } else {
-            console.error('Failed to create task for frame:', frame.id);
-          }
-        } catch (error) {
-          console.error('Error creating task:', error);
-        }
-      }
-      
-      setTasks(prev => [...prev, ...newTasks]);
-      console.log("✅ [UI DEBUG] Created tasks:", newTasks);
-      
-      // Trigger queue processing for any queued tasks
-      try {
-        const queueResponse = await fetch('/api/queue/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (queueResponse.ok) {
-          const queueResult = await queueResponse.json();
-          console.log("🔄 [UI DEBUG] Initial queue processing triggered:", queueResult);
-          
-          // Check if any tasks were processed from the queue
-          if (queueResult.processedCount > 0) {
-            console.log("✅ [UI DEBUG] Queue processed tasks:", queueResult.processedCount);
-          }
-        }
-      } catch (queueError) {
-        console.error("❌ [UI DEBUG] Error triggering initial queue processing:", queueError);
-      }
-      
     } catch (error) {
-      console.error('Error generating videos:', error);
-      alert('Failed to generate videos. Please try again.');
+      console.error('Generation error:', error);
+      setSubmissionStatus('error');
+      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setIsGenerating(false);
+      setIsValidatingCode(false);
+    }
+  };
+
+  const validateCode = async (code: string) => {
+    setIsValidatingCode(true);
+    try {
+      const response = await fetch('/api/codes/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      
+            const result = await response.json();
+      setCodeValidation(result);
+      return result.valid;
+    } catch (error) {
+      console.error('Code validation error:', error);
+      setCodeValidation({ valid: false });
+      return false;
+    } finally {
+      setIsValidatingCode(false);
     }
   };
 
@@ -637,19 +230,6 @@ export default function StoryboardPage() {
     setTransitionPrompts({});
   };
 
-  const getStatusIcon = (status: TaskInfo['status']) => {
-    switch (status) {
-      case 'succeed':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'failed':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'processing':
-      case 'submitted':
-        return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />;
-      default:
-        return <div className="w-5 h-5 bg-gray-300 rounded-full" />;
-    }
-  };
 
   const uploadedCount = frames.filter(f => f.image).length;
 
@@ -662,34 +242,6 @@ export default function StoryboardPage() {
     }));
   }, []);
 
-  // Email sending function for notifications
-  const sendEmailNotification = async (emailAddress: string) => {
-    setIsSendingEmail(true);
-    try {
-      const response = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: emailAddress,
-          downloadUrl: downloadLink,
-          sessionId: sessionId,
-          type: 'notification'
-        })
-      });
-
-      if (response.ok) {
-        setEmailSent(true);
-        alert('Email notification sent! You will be notified when your video is ready.');
-      } else {
-        throw new Error('Failed to send email');
-      }
-    } catch (error) {
-      console.error('Error sending email:', error);
-      alert('Failed to send email. Please try again.');
-    } finally {
-      setIsSendingEmail(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -709,8 +261,8 @@ export default function StoryboardPage() {
         {/* Main Content - Hidden when success screen is shown */}
         {!showEmailModal && !showResultScreen && (
           <>
-            {/* Storyboard */}
-            <Card className="mb-8">
+        {/* Storyboard */}
+        <Card className="mb-8">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-gray-900">
@@ -861,108 +413,136 @@ export default function StoryboardPage() {
               </>
             )}
           </Button>
-        </div>
+          </div>
           
-        {/* Task Status */}
-        {tasks.length > 0 && (
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Video Generation Status
-              </h2>
-              <div className="space-y-3">
-                {tasks.map((task) => (
-                  <div key={task.taskId} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      {getStatusIcon(task.status)}
-                      <span className="font-medium">
-                        {task.frameId === 'combined' ? 'Final Video' : `Frame ${task.frameId}`}
-                      </span>
-                      <span className="text-sm text-gray-500 capitalize">{task.status}</span>
-                </div>
-                    {task.url && (
-                      <a
-                        href={task.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        Download
-                      </a>
-                    )}
-                  </div>
-                ))}
-                </div>
-            </CardContent>
-          </Card>
-          )}
           </>
         )}
 
-        {/* Success Screen with Download Link */}
+        {/* Code Validation and Email Modal */}
         {showEmailModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-lg w-full p-6 shadow-xl">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="w-8 h-8 text-green-600" />
-                </div>
-                
-                <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-                  🎬 Your Video is Ready!
-                </h2>
-                
-                <p className="text-gray-600 mb-6">
-                  Your AI-generated video has been successfully created and is ready for download.
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                  Generate Your Video
+              </h2>
+                <p className="text-gray-600">
+                  Enter your access code and email to start video generation
                 </p>
-                
-                <div className="space-y-4">
-                  <a
-                    href={downloadLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
-                  >
-                    Download Video Now
-                  </a>
-                  
-                  <div className="border-t pt-4">
-                    <p className="text-sm text-gray-600 mb-4">
-                      Want to be notified about future video updates? Enter your email:
-                    </p>
-                    
-                    <div className="flex gap-2">
-                      <Input
-                        type="email"
-                        placeholder="Enter your email address"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="flex-1"
-                        disabled={isSendingEmail}
-                      />
-                      <Button
-                        onClick={() => sendEmailNotification(email)}
-                        disabled={!email.trim() || isSendingEmail}
-                        variant="outline"
-                      >
-                        {isSendingEmail ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          "Notify Me"
-                        )}
-                      </Button>
-                    </div>
+              </div>
+              
+              <div className="space-y-4">
+                {/* Code Input */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Access Code
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      placeholder="Enter your access code"
+                      className="flex-1"
+                    />
+                    <Button
+                      onClick={() => validateCode(code)}
+                      disabled={!code.trim() || isValidatingCode}
+                      variant="outline"
+                    >
+                      {isValidatingCode ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        'Validate'
+                      )}
+                    </Button>
                   </div>
-                  
-                  <Button
-                    onClick={() => {
-                      setShowEmailModal(false);
-                      setShowResultScreen(true);
-                    }}
-                    variant="ghost"
+                  {codeValidation && (
+                    <div className="mt-2 flex items-center gap-2">
+                      {codeValidation.valid ? (
+                        <>
+                          <CheckCircle className="w-4 h-4 text-green-500" />
+                          <span className="text-sm text-green-600">
+                            Valid {codeValidation.packageType} code
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-4 h-4 text-red-500" />
+                          <span className="text-sm text-red-600">
+                            Invalid code
+                      </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Email Input */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email Address (Optional)
+                  </label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your@email.com"
                     className="w-full"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    We'll notify you when your video is ready
+                  </p>
+                </div>
+
+                {/* Submission Status */}
+                {submissionStatus !== 'idle' && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    {submissionStatus === 'submitting' && (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                        <span className="text-blue-600">Submitting your video request...</span>
+                      </>
+                    )}
+                    {submissionStatus === 'submitted' && (
+                      <>
+                        <CheckCircle className="w-5 h-5 text-green-500" />
+                        <span className="text-green-600">
+                          Video request submitted! {email ? 'Check your email for updates.' : 'Your video will be processed on our servers.'}
+                        </span>
+                      </>
+                    )}
+                    {submissionStatus === 'error' && (
+                      <>
+                        <XCircle className="w-5 h-5 text-red-500" />
+                        <span className="text-red-600">Error submitting request. Please try again.</span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    onClick={handleModalSubmit}
+                    disabled={!code.trim() || isValidatingCode || submissionStatus === 'submitting'}
+                    className="flex-1"
                   >
-                    Continue Without Email
+                    {submissionStatus === 'submitting' ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Generate Video'
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => setShowEmailModal(false)}
+                    variant="outline"
+                    disabled={submissionStatus === 'submitting'}
+                  >
+                    Cancel
                   </Button>
                 </div>
               </div>
@@ -980,46 +560,32 @@ export default function StoryboardPage() {
                 </div>
                 
                 <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-                  Video Ready! 🎬
+                  Video Generation Started! 🎬
                 </h2>
                 
                 <p className="text-gray-600 mb-6">
-                  {emailSent 
-                    ? `Download link sent to ${email}` 
-                    : 'Your combined video is ready for download'
-                  }
+                  Your video is being generated on our servers. {email ? `You'll receive an email at ${email} when it's ready.` : 'Your video will be processed in the background.'}
                 </p>
                 
                 <div className="space-y-4">
-                  <a
-                    href={downloadLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Download Video
-                  </a>
-                  
                   <Button
                     onClick={() => {
                       setShowResultScreen(false);
                       setEmailSent(false);
                       setDownloadLink('');
                       setEmail('');
+                      setSubmissionStatus('idle');
                       // Reset the entire state for a new video
                       setFrames([
-                        { id: '1', image: undefined },
-                        { id: '2', image: undefined },
-                        { id: '3', image: undefined },
-                        { id: '4', image: undefined }
+                        { id: '1' },
+                        { id: '2' },
+                        { id: '3' },
+                        { id: '4' }
                       ]);
-                      setTasks([]);
-                      setCombinedVideo(null);
                       setTransitionPrompts({});
                       setCode('');
                       setCodeValidation(null);
                     }}
-                    variant="outline"
                     className="w-full"
                   >
                     Create Another Video
@@ -1028,9 +594,9 @@ export default function StoryboardPage() {
               </div>
             </div>
           </div>
-        )}
+          )}
 
-      </div>
+        </div>
     </div>
   );
 }
