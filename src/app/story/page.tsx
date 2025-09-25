@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { Textarea } from "@/components/ui/textarea";
-import pako from 'pako';
+import * as pako from 'pako';
 
 type Frame = {
   id: string;
