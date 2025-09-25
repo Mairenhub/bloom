@@ -168,11 +168,30 @@ export async function POST(request: NextRequest) {
       }
     }, 1000);
 
+    // Get queue position for the first task to show estimated wait time
+    let queueInfo = null;
+    if (videoTasks.length > 0) {
+      try {
+        const positionResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/queue/position?taskId=${videoTasks[0].taskId}`);
+        if (positionResponse.ok) {
+          queueInfo = await positionResponse.json();
+        }
+      } catch (error) {
+        console.warn("⚠️ [BATCH SUBMIT] Failed to get queue position:", error);
+      }
+    }
+
     return NextResponse.json({ 
       success: true, 
       sessionId,
       queuedVideos: videoTasks.length,
-      message: email ? 'Video generation started. You will receive an email when complete.' : 'Video generation started on our servers.'
+      message: email ? 'Video generation started. You will receive an email when complete.' : 'Video generation started on our servers.',
+      queueInfo: queueInfo ? {
+        position: queueInfo.position,
+        totalInQueue: queueInfo.totalInQueue,
+        estimatedWaitMinutes: queueInfo.estimatedWaitMinutes,
+        estimatedCompletionTime: queueInfo.estimatedCompletionTime
+      } : null
     });
 
   } catch (error) {

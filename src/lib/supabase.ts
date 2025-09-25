@@ -465,6 +465,46 @@ export async function getActiveProcessingCount(accountId: string = 'default') {
   return count || 0;
 }
 
+export async function getQueuePositionAndWaitTime(taskId: string, accountId: string = 'default') {
+  console.log("🔍 [SUPABASE DEBUG] Getting queue position for task:", taskId);
+  
+  // Get all queued tasks (including the current one)
+  const { data: queuedTasks, error } = await supabase
+    .from('video_queue')
+    .select('task_id, created_at, priority')
+    .eq('account_id', accountId)
+    .in('status', ['queued', 'processing'])
+    .order('priority', { ascending: false })
+    .order('created_at', { ascending: true });
+  
+  if (error) {
+    console.error("❌ [SUPABASE DEBUG] Error getting queue position:", error);
+    throw error;
+  }
+  
+  // Find the position of the current task
+  const taskIndex = queuedTasks?.findIndex(task => task.task_id === taskId) ?? -1;
+  const position = taskIndex >= 0 ? taskIndex + 1 : 0;
+  
+  // Calculate estimated wait time
+  // Each task takes ~2 minutes, with 3 concurrent slots
+  const TASK_DURATION_MINUTES = 2;
+  const CONCURRENT_SLOTS = 3;
+  
+  // Calculate how many "rounds" this task needs to wait
+  const roundsAhead = Math.floor((position - 1) / CONCURRENT_SLOTS);
+  const estimatedWaitMinutes = roundsAhead * TASK_DURATION_MINUTES;
+  
+  console.log(`📊 [SUPABASE DEBUG] Queue position: ${position}, estimated wait: ${estimatedWaitMinutes} minutes`);
+  
+  return {
+    position,
+    totalInQueue: queuedTasks?.length || 0,
+    estimatedWaitMinutes,
+    estimatedCompletionTime: new Date(Date.now() + estimatedWaitMinutes * 60 * 1000).toISOString()
+  };
+}
+
 // Code management functions
 export async function validateCode(code: string) {
   console.log("🔍 [SUPABASE DEBUG] Validating code:", code);

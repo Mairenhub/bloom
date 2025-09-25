@@ -57,6 +57,12 @@ export default function StoryboardPage() {
   const [downloadLink, setDownloadLink] = useState('');
   const [showResultScreen, setShowResultScreen] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
+  const [queueInfo, setQueueInfo] = useState<{
+    position: number;
+    totalInQueue: number;
+    estimatedWaitMinutes: number;
+    estimatedCompletionTime: string;
+  } | null>(null);
 
 
 
@@ -140,6 +146,12 @@ export default function StoryboardPage() {
       }
 
       const result = await response.json();
+      
+      // Store queue information if available
+      if (result.queueInfo) {
+        setQueueInfo(result.queueInfo);
+      }
+      
       setSubmissionStatus('submitted');
       setShowEmailModal(false);
       setShowResultScreen(true);
@@ -566,6 +578,34 @@ export default function StoryboardPage() {
                 <p className="text-gray-600 mb-6">
                   Your video is being generated on our servers. {email ? `You'll receive an email at ${email} when it's ready.` : 'Your video will be processed in the background.'}
                 </p>
+
+                {/* Queue Information */}
+                {queueInfo && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center justify-center mb-3">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                        <span className="text-blue-600 font-bold text-sm">#</span>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-blue-800 font-semibold">
+                          Position #{queueInfo.position} in queue
+                        </p>
+                        <p className="text-blue-600 text-sm">
+                          {queueInfo.totalInQueue} videos ahead of you
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="text-center space-y-2">
+                      <p className="text-blue-700 font-medium">
+                        ⏱️ Estimated wait time: {queueInfo.estimatedWaitMinutes} minutes
+                      </p>
+                      <p className="text-blue-600 text-sm">
+                        Expected completion: {new Date(queueInfo.estimatedCompletionTime).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="space-y-4">
                   <Button
@@ -575,6 +615,7 @@ export default function StoryboardPage() {
                       setDownloadLink('');
                       setEmail('');
                       setSubmissionStatus('idle');
+                      setQueueInfo(null);
                       // Reset the entire state for a new video
                       setFrames([
                         { id: '1' },
