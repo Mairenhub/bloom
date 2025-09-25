@@ -100,26 +100,16 @@ export async function POST(request: NextRequest) {
       // Get transition prompt
       const transitionPrompt = transitionPrompts[`${frame.id}-${nextFrame.id}`] || `Smooth transition from frame ${frame.id} to ${nextFrame.id}`;
       
-      // Use the pre-uploaded image URLs
-      const fromImageUrl = frame.imageUrl;
-      const toImageUrl = nextFrame.imageUrl;
+      // Use the decompressed base64 images directly
+      const fromImageBase64 = frame.imageBase64;
+      const toImageBase64 = nextFrame.imageBase64;
       
-      // Download images for OpenAI enhancement (we still need base64 for that)
-      console.log(`📥 [BATCH SUBMIT] Downloading images for enhancement...`);
-      const fromImageResponse = await fetch(fromImageUrl);
-      const toImageResponse = await fetch(toImageUrl);
+      // Upload images to Supabase Storage for processing
+      console.log(`📤 [BATCH SUBMIT] Uploading images to storage for task ${taskId}...`);
+      const fromImageUrl = await uploadImageToStorage(fromImageBase64, `${taskId}-from.jpg`);
+      const toImageUrl = await uploadImageToStorage(toImageBase64, `${taskId}-to.jpg`);
       
-      if (!fromImageResponse.ok || !toImageResponse.ok) {
-        throw new Error('Failed to download images for enhancement');
-      }
-      
-      const fromImageBuffer = await fromImageResponse.arrayBuffer();
-      const toImageBuffer = await toImageResponse.arrayBuffer();
-      
-      const fromImageBase64 = Buffer.from(fromImageBuffer).toString('base64');
-      const toImageBase64 = Buffer.from(toImageBuffer).toString('base64');
-      
-      // Enhance the prompt using the downloaded images
+      // Enhance the prompt using the base64 images
       const enhancedData = await enhancePromptForKlingAI(transitionPrompt, {
         fromImage: fromImageBase64,
         toImage: toImageBase64,

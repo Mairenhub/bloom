@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { Textarea } from "@/components/ui/textarea";
+import pako from 'pako';
 
 type Frame = {
   id: string;
   image?: string; // data URL for display
-  imageBase64?: string; // base64 string for API
+  imageCompressed?: string; // compressed base64 string for API (much smaller!)
 };
 
 type Transition = {
@@ -126,50 +127,26 @@ export default function StoryboardPage() {
       }
     }
 
-      // Upload images to storage first to avoid large request body
-      console.log('📤 [STORY] Uploading images to storage...');
-      const uploadedFramePairs = await Promise.all(
-        framePairs.map(async ([frame, nextFrame]) => {
-          // Upload both images to storage
-          const fromImageResponse = await fetch('/api/images/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              imageBase64: frame.imageBase64,
-              filename: `frame-${frame.id}-${Date.now()}.jpg`
-            })
-          });
-          
-          const toImageResponse = await fetch('/api/images/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              imageBase64: nextFrame.imageBase64,
-              filename: `frame-${nextFrame.id}-${Date.now()}.jpg`
-            })
-          });
-          
-          if (!fromImageResponse.ok || !toImageResponse.ok) {
-            throw new Error('Failed to upload images to storage');
-          }
-          
-          const fromImageData = await fromImageResponse.json();
-          const toImageData = await toImageResponse.json();
-          
-          return [
-            { ...frame, imageUrl: fromImageData.url },
-            { ...nextFrame, imageUrl: toImageData.url }
-          ];
-        })
-      );
+      // Decompress images and prepare for API submission
+      console.log('🗜️ [STORY] Decompressing images for API submission...');
+      const decompressedFramePairs = framePairs.map(([frame, nextFrame]) => {
+        // Decompress the base64 strings
+        const fromImageBase64 = frame.imageCompressed ? decompressBase64(frame.imageCompressed) : '';
+        const toImageBase64 = nextFrame.imageCompressed ? decompressBase64(nextFrame.imageCompressed) : '';
+        
+        return [
+          { ...frame, imageBase64: fromImageBase64 },
+          { ...nextFrame, imageBase64: toImageBase64 }
+        ];
+      });
 
-      // Submit to server-side batch processing with image URLs instead of base64
+      // Submit to server-side batch processing with decompressed base64 images
       const response = await fetch('/api/queue/submit-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: `session-${Date.now()}`,
-          framePairs: uploadedFramePairs,
+          framePairs: decompressedFramePairs,
           transitionPrompts,
           duration: parseInt(duration),
           aspectRatio,
@@ -223,17 +200,53 @@ export default function StoryboardPage() {
     }
   };
 
+  const compressBase64 = (base64String: string): string => {
+    // Convert base64 to Uint8Array
+    const binaryString = atob(base64String);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Compress using pako (gzip)
+    const compressed = pako.gzip(bytes);
+    
+    // Convert back to base64
+    const compressedBase64 = btoa(String.fromCharCode(...compressed));
+    
+    console.log(`🗜️ [COMPRESS] Original: ${Math.round(base64String.length / 1024)}KB, Compressed: ${Math.round(compressedBase64.length / 1024)}KB (${Math.round((1 - compressedBase64.length / base64String.length) * 100)}% smaller)`);
+    
+    return compressedBase64;
+  };
+
+  const decompressBase64 = (compressedBase64: string): string => {
+    // Convert compressed base64 to Uint8Array
+    const compressedBytes = new Uint8Array(atob(compressedBase64).split('').map(c => c.charCodeAt(0)));
+    
+    // Decompress using pako (gunzip)
+    const decompressed = pako.ungzip(compressedBytes);
+    
+    // Convert back to base64
+    const base64String = btoa(String.fromCharCode(...decompressed));
+    
+    return base64String;
+  };
+
   const handleImageUpload = (frameId: string, file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
       // Extract base64 string from data URL
       const base64String = dataUrl.split(',')[1];
+      
+      // Compress the base64 string for storage
+      const compressedBase64 = compressBase64(base64String);
+      
       setFrames(prev => prev.map(f => 
         f.id === frameId ? { 
           ...f, 
           image: dataUrl, // for display with Next.js Image
-          imageBase64: base64String // for API calls
+          imageCompressed: compressedBase64 // compressed base64 for API calls (much smaller!)
         } : f
       ));
     };
