@@ -469,9 +469,10 @@ export async function getQueuePositionAndWaitTime(taskId: string, accountId: str
   console.log("🔍 [SUPABASE DEBUG] Getting queue position for task:", taskId);
   
   // Get all queued tasks (including the current one)
+  // Only count 'queued' tasks for position calculation, not 'processing' ones
   const { data: queuedTasks, error } = await supabase
     .from('video_queue')
-    .select('task_id, created_at, priority')
+    .select('task_id, created_at, priority, status')
     .eq('account_id', accountId)
     .in('status', ['queued', 'processing'])
     .order('priority', { ascending: false })
@@ -492,10 +493,20 @@ export async function getQueuePositionAndWaitTime(taskId: string, accountId: str
   const CONCURRENT_SLOTS = 3;
   
   // Calculate how many "rounds" this task needs to wait
-  const roundsAhead = Math.floor((position - 1) / CONCURRENT_SLOTS);
-  const estimatedWaitMinutes = roundsAhead * TASK_DURATION_MINUTES;
+  // Position 1-3 = no wait (0 rounds), Position 4-6 = 1 round (2 min), etc.
+  const roundsAhead = Math.max(0, Math.floor((position - 1) / CONCURRENT_SLOTS));
+  const calculatedWaitMinutes = roundsAhead * TASK_DURATION_MINUTES;
   
-  console.log(`📊 [SUPABASE DEBUG] Queue position: ${position}, estimated wait: ${estimatedWaitMinutes} minutes`);
+  // Always enforce a minimum of 2 minutes wait time
+  const estimatedWaitMinutes = Math.max(2, calculatedWaitMinutes);
+  
+  console.log(`📊 [SUPABASE DEBUG] Queue details:`, {
+    totalTasks: queuedTasks?.length || 0,
+    taskIndex,
+    position,
+    roundsAhead,
+    estimatedWaitMinutes
+  });
   
   return {
     position,
@@ -686,7 +697,7 @@ export async function downloadImageAsBase64(path: string): Promise<string> {
   });
 }
 
-export async function getImagePublicUrl(path: string): string {
+export async function getImagePublicUrl(path: string): Promise<string> {
   console.log("🔗 [SUPABASE DEBUG] Getting public URL for:", path);
   
   const { data } = supabase.storage
