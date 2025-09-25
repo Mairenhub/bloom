@@ -588,3 +588,111 @@ export async function createCode(packageType: string, metadata?: any) {
   console.log("✅ [SUPABASE DEBUG] Code created successfully:", data);
   return data;
 }
+
+// Image storage operations
+export async function uploadImage(file: File, userId: string): Promise<{ path: string; publicUrl: string }> {
+  console.log("📤 [SUPABASE DEBUG] Uploading image for user:", userId);
+  
+  // Generate unique path
+  const ext = file.name.split('.').pop();
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const uuid = crypto.randomUUID();
+  const key = `${userId}/${year}/${month}/${uuid}.${ext}`;
+
+  const { data, error } = await supabase.storage
+    .from('uploads')
+    .upload(key, file, {
+      contentType: file.type,
+      upsert: false,
+      cacheControl: '3600'
+    });
+  
+  if (error) {
+    console.error("❌ [SUPABASE DEBUG] Error uploading image:", error);
+    throw error;
+  }
+  
+  // Get public URL
+  const { data: urlData } = supabase.storage
+    .from('uploads')
+    .getPublicUrl(data.path);
+  
+  console.log("✅ [SUPABASE DEBUG] Image uploaded:", urlData.publicUrl);
+  return { path: data.path, publicUrl: urlData.publicUrl };
+}
+
+export async function saveImageRecord(imageData: {
+  userId: string;
+  bucket: string;
+  path: string;
+  mimeType: string;
+  sizeBytes: number;
+  width?: number;
+  height?: number;
+  metadata?: any;
+}) {
+  console.log("💾 [SUPABASE DEBUG] Saving image record:", imageData);
+  
+  const { data, error } = await supabase
+    .from('images')
+    .insert({
+      user_id: imageData.userId,
+      bucket: imageData.bucket,
+      path: imageData.path,
+      mime_type: imageData.mimeType,
+      size_bytes: imageData.sizeBytes,
+      width: imageData.width,
+      height: imageData.height,
+      metadata: imageData.metadata || {}
+    })
+    .select()
+    .single();
+  
+  if (error) {
+    console.error("❌ [SUPABASE DEBUG] Error saving image record:", error);
+    throw error;
+  }
+  
+  console.log("✅ [SUPABASE DEBUG] Image record saved:", data);
+  return data;
+}
+
+export async function downloadImageAsBase64(path: string): Promise<string> {
+  console.log("📥 [SUPABASE DEBUG] Downloading image as base64:", path);
+  
+  const { data, error } = await supabase.storage
+    .from('uploads')
+    .download(path);
+  
+  if (error) {
+    console.error("❌ [SUPABASE DEBUG] Error downloading image:", error);
+    throw error;
+  }
+  
+  // Convert blob to base64
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Remove data:image/...;base64, prefix to get just the base64 string
+      const base64 = result.split(',')[1];
+      console.log("✅ [SUPABASE DEBUG] Image converted to base64");
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(data);
+  });
+}
+
+export async function getImagePublicUrl(path: string): string {
+  console.log("🔗 [SUPABASE DEBUG] Getting public URL for:", path);
+  
+  const { data } = supabase.storage
+    .from('uploads')
+    .getPublicUrl(path);
+  
+  console.log("✅ [SUPABASE DEBUG] Public URL generated:", data.publicUrl);
+  return data.publicUrl;
+}

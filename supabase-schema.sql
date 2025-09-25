@@ -55,6 +55,20 @@ CREATE TABLE IF NOT EXISTS codes (
   metadata JSONB -- additional data like source, campaign, etc.
 );
 
+-- Create images table for tracking uploaded images
+CREATE TABLE IF NOT EXISTS images (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL, -- IP address or user identifier
+  bucket TEXT NOT NULL,
+  path TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_bytes BIGINT NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  metadata JSONB -- additional data like original filename, etc.
+);
+
 -- Fix existing table if session_id column has NOT NULL constraint
 ALTER TABLE video_queue ALTER COLUMN session_id DROP NOT NULL;
 
@@ -70,12 +84,16 @@ CREATE INDEX IF NOT EXISTS idx_video_queue_session_id ON video_queue(session_id)
 CREATE INDEX IF NOT EXISTS idx_codes_code ON codes(code);
 CREATE INDEX IF NOT EXISTS idx_codes_is_redeemed ON codes(is_redeemed);
 CREATE INDEX IF NOT EXISTS idx_codes_package_type ON codes(package_type);
+CREATE INDEX IF NOT EXISTS idx_images_user_id ON images(user_id);
+CREATE INDEX IF NOT EXISTS idx_images_bucket ON images(bucket);
+CREATE INDEX IF NOT EXISTS idx_images_created_at ON images(created_at);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE video_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE video_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE images ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for public access (adjust as needed for your security requirements)
 -- Drop existing policies first to avoid conflicts
@@ -83,6 +101,7 @@ DROP POLICY IF EXISTS "Allow all operations on videos" ON videos;
 DROP POLICY IF EXISTS "Allow all operations on video_sessions" ON video_sessions;
 DROP POLICY IF EXISTS "Allow all operations on video_queue" ON video_queue;
 DROP POLICY IF EXISTS "Allow all operations on codes" ON codes;
+DROP POLICY IF EXISTS "Allow all operations on images" ON images;
 
 -- Create policies
 CREATE POLICY "Allow all operations on videos" ON videos
@@ -97,9 +116,17 @@ CREATE POLICY "Allow all operations on video_queue" ON video_queue
 CREATE POLICY "Allow all operations on codes" ON codes
   FOR ALL USING (true);
 
+CREATE POLICY "Allow all operations on images" ON images
+  FOR ALL USING (true);
+
 -- Create storage bucket for videos
 INSERT INTO storage.buckets (id, name, public) 
 VALUES ('videos', 'videos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Create storage bucket for images
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('uploads', 'uploads', false)
 ON CONFLICT (id) DO NOTHING;
 
 -- Create storage policy for videos bucket
@@ -117,3 +144,13 @@ CREATE POLICY "Allow authenticated users to upload videos" ON storage.objects
 
 CREATE POLICY "Allow authenticated users to update videos" ON storage.objects
   FOR UPDATE USING (bucket_id = 'videos');
+
+-- Storage policies for images bucket
+CREATE POLICY "Allow public access to images" ON storage.objects
+  FOR SELECT USING (bucket_id = 'uploads');
+
+CREATE POLICY "Allow authenticated users to upload images" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'uploads');
+
+CREATE POLICY "Allow authenticated users to update images" ON storage.objects
+  FOR UPDATE USING (bucket_id = 'uploads');

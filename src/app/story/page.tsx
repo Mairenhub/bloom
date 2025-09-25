@@ -9,18 +9,15 @@ import { Input } from "@/components/ui/input";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { Textarea } from "@/components/ui/textarea";
+import { uploadImage, saveImageRecord, getImagePublicUrl } from "@/lib/supabase";
 
 type Frame = {
   id: string;
-  image?: string; // data URL for display
-  imageCompressed?: string; // compressed base64 string for API (much smaller!)
+  image?: string; // public URL for display
+  imagePath?: string; // Supabase storage path
+  imageCompressed?: string; // compressed base64 string for API (when needed)
 };
 
-type Transition = {
-  fromFrameId: string;
-  toFrameId: string;
-  text: string;
-};
 
 
 function useInitialFrames(): Frame[] {
@@ -39,6 +36,12 @@ export default function StoryboardPage() {
   const [duration, setDuration] = useState("5");
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [transitionPrompts, setTransitionPrompts] = useState<{ [key: string]: string }>({});
+  
+  // Generate a unique user ID for this session
+  const [userId] = useState(() => `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
+  
+  // Image upload state
+  const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set());
   
   // Code redemption state
   const [code, setCode] = useState('');
@@ -103,7 +106,7 @@ export default function StoryboardPage() {
         return;
       }
 
-    const candidates = frames.filter((f) => f.image);
+    const candidates = frames.filter((f) => f.image && f.imagePath);
       if (candidates.length < 2) {
         alert('Please upload at least 2 images');
         setSubmissionStatus('error');
@@ -126,12 +129,34 @@ export default function StoryboardPage() {
       }
     }
 
-      // Use compressed images directly for API submission
-      console.log('📤 [STORY] Preparing compressed images for API submission...');
+      // Convert stored images to base64 for API submission
+      console.log('📤 [STORY] Converting stored images to base64 for API submission...');
+      
+      // Get all image paths
+      const imagePaths = candidates.map(f => f.imagePath!);
+      
+      // Convert to base64
+      const base64Response = await fetch('/api/images/to-base64', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagePaths })
+      });
+      
+      if (!base64Response.ok) {
+        throw new Error('Failed to convert images to base64');
+      }
+      
+      const { images: base64Images } = await base64Response.json();
+      
+      // Create a map of path to base64
+      const pathToBase64 = new Map();
+      base64Images.forEach((img: { path: string; base64: string }) => {
+        pathToBase64.set(img.path, img.base64);
+      });
+      
       const preparedFramePairs = framePairs.map(([frame, nextFrame]) => {
-        // Use the already compressed base64 strings
-        const fromImageBase64 = frame.imageCompressed || '';
-        const toImageBase64 = nextFrame.imageCompressed || '';
+        const fromImageBase64 = pathToBase64.get(frame.imagePath!) || '';
+        const toImageBase64 = pathToBase64.get(nextFrame.imagePath!) || '';
         
         return [
           { ...frame, imageBase64: fromImageBase64 },
@@ -200,69 +225,59 @@ export default function StoryboardPage() {
   };
 
 
-  const compressImage = (file: File, maxWidth: number = 1080, quality: number = 0.6): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = document.createElement('img');
-      
-      img.onload = () => {
-        // Calculate new dimensions maintaining aspect ratio
-        let { width, height } = img;
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        // Draw and compress
-        ctx?.drawImage(img, 0, 0, width, height);
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedDataUrl);
-      };
-      
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
-    });
-  };
-
   const handleImageUpload = async (frameId: string, file: File) => {
+    // Add to uploading set
+    setUploadingImages(prev => new Set(prev).add(frameId));
+    
     try {
-      console.log(`📸 [IMAGE UPLOAD] Compressing image for frame ${frameId}...`);
+      console.log(`📸 [IMAGE UPLOAD] Uploading image for frame ${frameId}...`);
       
-      // Compress the image first to reduce size significantly
-      const compressedDataUrl = await compressImage(file, 1080, 0.6);
+      // Upload to Supabase Storage
+      const { path, publicUrl } = await uploadImage(file, userId);
       
-      // Extract base64 string from data URL
-      const base64String = compressedDataUrl.split(',')[1];
+      // Get image dimensions for metadata
+      const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+        const img = document.createElement('img');
+        img.onload = () => {
+          resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        };
+        img.src = publicUrl;
+      });
       
-      console.log(`✅ [IMAGE UPLOAD] Image compressed successfully for frame ${frameId} (${Math.round(base64String.length / 1024)}KB)`);
+      // Save image record to database
+      await saveImageRecord({
+        userId,
+        bucket: 'uploads',
+        path,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        width: dimensions.width,
+        height: dimensions.height,
+        metadata: {
+          originalName: file.name,
+          frameId
+        }
+      });
+      
+      console.log(`✅ [IMAGE UPLOAD] Image uploaded successfully for frame ${frameId} (${Math.round(file.size / 1024)}KB)`);
       
       setFrames(prev => prev.map(f => 
         f.id === frameId ? { 
           ...f, 
-          image: compressedDataUrl, // for display with Next.js Image
-          imageCompressed: base64String // compressed base64 for API calls (much smaller!)
+          image: publicUrl, // for display with Next.js Image
+          imagePath: path // storage path for later base64 conversion
         } : f
       ));
     } catch (error) {
-      console.error('❌ [IMAGE UPLOAD] Error compressing image:', error);
-      // Fallback to original method if compression fails
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        const base64String = dataUrl.split(',')[1];
-        setFrames(prev => prev.map(f => 
-          f.id === frameId ? { 
-            ...f, 
-            image: dataUrl,
-            imageCompressed: base64String
-          } : f
-        ));
-      };
-      reader.readAsDataURL(file);
+      console.error('❌ [IMAGE UPLOAD] Error uploading image:', error);
+      alert(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      // Remove from uploading set
+      setUploadingImages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(frameId);
+        return newSet;
+      });
     }
   };
 
@@ -306,7 +321,7 @@ export default function StoryboardPage() {
   };
 
 
-  const uploadedCount = frames.filter(f => f.image).length;
+  const uploadedCount = frames.filter(f => f.image && f.imagePath).length;
 
   // Memoized handler for textarea changes to prevent unnecessary re-renders
   const handleTransitionPromptChange = useCallback((frameId: string, nextFrameId: string, value: string) => {
@@ -373,6 +388,11 @@ export default function StoryboardPage() {
                             height={128}
                             className="w-full h-full object-cover rounded-lg"
                           />
+                        ) : uploadingImages.has(frame.id) ? (
+                          <div className="flex flex-col items-center justify-center w-full h-full">
+                            <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-2" />
+                            <span className="text-xs text-blue-600">Uploading...</span>
+                          </div>
                         ) : (
                           <label className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
                             <Upload className="w-8 h-8 text-gray-400 mb-2" />
@@ -381,6 +401,7 @@ export default function StoryboardPage() {
                               type="file"
                               accept="image/*"
                               className="hidden"
+                              disabled={uploadingImages.has(frame.id)}
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) handleImageUpload(frame.id, file);
@@ -682,9 +703,7 @@ export default function StoryboardPage() {
                       // Reset the entire state for a new video
                       setFrames([
                         { id: '1' },
-                        { id: '2' },
-                        { id: '3' },
-                        { id: '4' }
+                        { id: '2' }
                       ]);
                       setTransitionPrompts({});
                       setCode('');
