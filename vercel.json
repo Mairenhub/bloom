@@ -4,5 +4,10 @@
       "path": "/api/queue/cron",
       "schedule": "*/2 * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/queue/process/route.ts": {
+      "maxDuration": 300
+    }
+  }
 }
