@@ -211,25 +211,39 @@ export default function StoryboardPage() {
     // Compress using pako (gzip)
     const compressed = pako.gzip(bytes);
     
-    // Convert back to base64
-    const compressedBase64 = btoa(String.fromCharCode(...compressed));
+    // Convert back to base64 using a more efficient method
+    let compressedBase64 = '';
+    for (let i = 0; i < compressed.length; i += 1024) {
+      const chunk = compressed.slice(i, i + 1024);
+      compressedBase64 += String.fromCharCode(...chunk);
+    }
     
-    console.log(`🗜️ [COMPRESS] Original: ${Math.round(base64String.length / 1024)}KB, Compressed: ${Math.round(compressedBase64.length / 1024)}KB (${Math.round((1 - compressedBase64.length / base64String.length) * 100)}% smaller)`);
+    const finalBase64 = btoa(compressedBase64);
     
-    return compressedBase64;
+    console.log(`🗜️ [COMPRESS] Original: ${Math.round(base64String.length / 1024)}KB, Compressed: ${Math.round(finalBase64.length / 1024)}KB (${Math.round((1 - finalBase64.length / base64String.length) * 100)}% smaller)`);
+    
+    return finalBase64;
   };
 
   const decompressBase64 = (compressedBase64: string): string => {
     // Convert compressed base64 to Uint8Array
-    const compressedBytes = new Uint8Array(atob(compressedBase64).split('').map(c => c.charCodeAt(0)));
+    const binaryString = atob(compressedBase64);
+    const compressedBytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      compressedBytes[i] = binaryString.charCodeAt(i);
+    }
     
     // Decompress using pako (gunzip)
     const decompressed = pako.ungzip(compressedBytes);
     
-    // Convert back to base64
-    const base64String = btoa(String.fromCharCode(...decompressed));
+    // Convert back to base64 using chunked approach
+    let base64String = '';
+    for (let i = 0; i < decompressed.length; i += 1024) {
+      const chunk = decompressed.slice(i, i + 1024);
+      base64String += String.fromCharCode(...chunk);
+    }
     
-    return base64String;
+    return btoa(base64String);
   };
 
   const handleImageUpload = (frameId: string, file: File) => {
