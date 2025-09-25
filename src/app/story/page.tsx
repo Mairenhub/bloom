@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { Textarea } from "@/components/ui/textarea";
-import * as pako from 'pako';
 
 type Frame = {
   id: string;
@@ -127,12 +126,12 @@ export default function StoryboardPage() {
       }
     }
 
-      // Decompress images and prepare for API submission
-      console.log('🗜️ [STORY] Decompressing images for API submission...');
-      const decompressedFramePairs = framePairs.map(([frame, nextFrame]) => {
-        // Decompress the base64 strings
-        const fromImageBase64 = frame.imageCompressed ? decompressBase64(frame.imageCompressed) : '';
-        const toImageBase64 = nextFrame.imageCompressed ? decompressBase64(nextFrame.imageCompressed) : '';
+      // Use compressed images directly for API submission
+      console.log('📤 [STORY] Preparing compressed images for API submission...');
+      const preparedFramePairs = framePairs.map(([frame, nextFrame]) => {
+        // Use the already compressed base64 strings
+        const fromImageBase64 = frame.imageCompressed || '';
+        const toImageBase64 = nextFrame.imageCompressed || '';
         
         return [
           { ...frame, imageBase64: fromImageBase64 },
@@ -140,13 +139,13 @@ export default function StoryboardPage() {
         ];
       });
 
-      // Submit to server-side batch processing with decompressed base64 images
+      // Submit to server-side batch processing with compressed base64 images
       const response = await fetch('/api/queue/submit-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: `session-${Date.now()}`,
-          framePairs: decompressedFramePairs,
+          framePairs: preparedFramePairs,
           transitionPrompts,
           duration: parseInt(duration),
           aspectRatio,
@@ -200,71 +199,71 @@ export default function StoryboardPage() {
     }
   };
 
-  const compressBase64 = (base64String: string): string => {
-    // Convert base64 to Uint8Array
-    const binaryString = atob(base64String);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    // Compress using pako (gzip)
-    const compressed = pako.gzip(bytes);
-    
-    // Convert back to base64 using a more efficient method
-    let compressedBase64 = '';
-    for (let i = 0; i < compressed.length; i += 1024) {
-      const chunk = compressed.slice(i, i + 1024);
-      compressedBase64 += String.fromCharCode(...chunk);
-    }
-    
-    const finalBase64 = btoa(compressedBase64);
-    
-    console.log(`🗜️ [COMPRESS] Original: ${Math.round(base64String.length / 1024)}KB, Compressed: ${Math.round(finalBase64.length / 1024)}KB (${Math.round((1 - finalBase64.length / base64String.length) * 100)}% smaller)`);
-    
-    return finalBase64;
-  };
 
-  const decompressBase64 = (compressedBase64: string): string => {
-    // Convert compressed base64 to Uint8Array
-    const binaryString = atob(compressedBase64);
-    const compressedBytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      compressedBytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    // Decompress using pako (gunzip)
-    const decompressed = pako.ungzip(compressedBytes);
-    
-    // Convert back to base64 using chunked approach
-    let base64String = '';
-    for (let i = 0; i < decompressed.length; i += 1024) {
-      const chunk = decompressed.slice(i, i + 1024);
-      base64String += String.fromCharCode(...chunk);
-    }
-    
-    return btoa(base64String);
-  };
-
-  const handleImageUpload = (frameId: string, file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      // Extract base64 string from data URL
-      const base64String = dataUrl.split(',')[1];
+  const compressImage = (file: File, maxWidth: number = 1080, quality: number = 0.6): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = document.createElement('img');
       
-      // Compress the base64 string for storage
-      const compressedBase64 = compressBase64(base64String);
+      img.onload = () => {
+        // Calculate new dimensions maintaining aspect ratio
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw and compress
+        ctx?.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedDataUrl);
+      };
+      
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handleImageUpload = async (frameId: string, file: File) => {
+    try {
+      console.log(`📸 [IMAGE UPLOAD] Compressing image for frame ${frameId}...`);
+      
+      // Compress the image first to reduce size significantly
+      const compressedDataUrl = await compressImage(file, 1080, 0.6);
+      
+      // Extract base64 string from data URL
+      const base64String = compressedDataUrl.split(',')[1];
+      
+      console.log(`✅ [IMAGE UPLOAD] Image compressed successfully for frame ${frameId} (${Math.round(base64String.length / 1024)}KB)`);
       
       setFrames(prev => prev.map(f => 
         f.id === frameId ? { 
           ...f, 
-          image: dataUrl, // for display with Next.js Image
-          imageCompressed: compressedBase64 // compressed base64 for API calls (much smaller!)
+          image: compressedDataUrl, // for display with Next.js Image
+          imageCompressed: base64String // compressed base64 for API calls (much smaller!)
         } : f
       ));
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('❌ [IMAGE UPLOAD] Error compressing image:', error);
+      // Fallback to original method if compression fails
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        const base64String = dataUrl.split(',')[1];
+        setFrames(prev => prev.map(f => 
+          f.id === frameId ? { 
+            ...f, 
+            image: dataUrl,
+            imageCompressed: base64String
+          } : f
+        ));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const addFrame = () => {
