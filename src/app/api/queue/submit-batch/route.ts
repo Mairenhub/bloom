@@ -1,5 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enhancePromptForKlingAI } from '@/lib/openai';
+import { supabaseAdmin } from '@/lib/supabase';
+
+// Helper function to upload base64 image to Supabase Storage
+async function uploadImageToStorage(base64Data: string, filename: string): Promise<string> {
+  // Remove data URL prefix if present
+  const base64 = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
+  
+  // Convert base64 to buffer
+  const buffer = Buffer.from(base64, 'base64');
+  
+  // Upload to Supabase Storage using admin client
+  const { data, error } = await supabaseAdmin.storage
+    .from('images')
+    .upload(filename, buffer, {
+      contentType: 'image/jpeg',
+      upsert: true
+    });
+  
+  if (error) {
+    throw new Error(`Failed to upload image: ${error.message}`);
+  }
+  
+  // Return the public URL
+  const { data: { publicUrl } } = supabaseAdmin.storage
+    .from('images')
+    .getPublicUrl(filename);
+  
+  return publicUrl;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,13 +108,15 @@ export async function POST(request: NextRequest) {
         style: aspectRatio
       });
 
+      // Upload images to Supabase Storage and store only the URLs
+      const fromImageUrl = await uploadImageToStorage(frame.imageBase64, `${taskId}-from.jpg`);
+      const toImageUrl = await uploadImageToStorage(nextFrame.imageBase64, `${taskId}-to.jpg`);
+      
       const taskData = {
         taskId,
         sessionId,
         frameId: frame.id,
         nextFrameId: nextFrame.id,
-        image: frame.imageBase64,
-        nextImage: nextFrame.imageBase64,
         originalPrompt: transitionPrompt,
         enhancedPrompt: enhancedData.enhancedPrompt,
         duration,
@@ -94,7 +125,10 @@ export async function POST(request: NextRequest) {
         totalVideos: framePairs.length,
         batchId: sessionId,
         status: 'queued',
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        // Store only image URLs, not the actual image data
+        fromImageUrl,
+        toImageUrl
       };
 
       // Submit to queue

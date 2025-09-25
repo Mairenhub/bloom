@@ -5,7 +5,7 @@ export async function GET(req: NextRequest) {
     console.log("⏰ [QUEUE CRON] Starting scheduled queue processing");
     
     // Call the queue processor
-    const processorUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/queue/process`;
+    const processorUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/queue/process`;
     
     const response = await fetch(processorUrl, {
       method: 'POST',

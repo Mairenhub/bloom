@@ -1,5 +1,70 @@
 import { NextRequest } from "next/server";
 import { supabase, uploadVideo } from "@/lib/supabase";
+import { exec } from "child_process";
+import { promisify } from "util";
+import { writeFile, unlink, mkdtemp } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
+
+const execAsync = promisify(exec);
+
+// Function to combine videos using FFmpeg
+async function combineVideosWithFFmpeg(videoBlobs: Blob[], outputPath: string): Promise<void> {
+  console.log(`🔗 [COMBINE] Combining ${videoBlobs.length} videos using FFmpeg`);
+  
+  if (videoBlobs.length === 1) {
+    // If only one video, just copy it
+    const arrayBuffer = await videoBlobs[0].arrayBuffer();
+    await writeFile(outputPath, Buffer.from(arrayBuffer));
+    return;
+  }
+  
+  // Create temporary directory for input files
+  const tempDir = await mkdtemp(join(tmpdir(), 'video-combine-'));
+  const inputFiles: string[] = [];
+  
+  try {
+    // Write each video blob to a temporary file
+    for (let i = 0; i < videoBlobs.length; i++) {
+      const inputPath = join(tempDir, `input_${i}.mp4`);
+      const arrayBuffer = await videoBlobs[i].arrayBuffer();
+      await writeFile(inputPath, Buffer.from(arrayBuffer));
+      inputFiles.push(inputPath);
+      console.log(`📁 [COMBINE] Created temp file ${i + 1}: ${inputPath}`);
+    }
+    
+    // Create FFmpeg concat file
+    const concatFilePath = join(tempDir, 'concat.txt');
+    const concatContent = inputFiles.map(file => `file '${file}'`).join('\n');
+    await writeFile(concatFilePath, concatContent);
+    console.log(`📝 [COMBINE] Created concat file: ${concatContent}`);
+    
+    // Run FFmpeg to concatenate videos
+    const ffmpegCommand = `ffmpeg -f concat -safe 0 -i "${concatFilePath}" -c copy "${outputPath}" -y`;
+    console.log(`🎬 [COMBINE] Running FFmpeg: ${ffmpegCommand}`);
+    
+    const { stdout, stderr } = await execAsync(ffmpegCommand);
+    console.log(`✅ [COMBINE] FFmpeg completed successfully`);
+    console.log(`📊 [COMBINE] FFmpeg stdout: ${stdout}`);
+    if (stderr) console.log(`⚠️ [COMBINE] FFmpeg stderr: ${stderr}`);
+    
+  } finally {
+    // Clean up temporary files
+    for (const file of inputFiles) {
+      try {
+        await unlink(file);
+      } catch (error) {
+        console.warn(`⚠️ [COMBINE] Failed to delete temp file ${file}:`, error);
+      }
+    }
+    try {
+      await unlink(join(tempDir, 'concat.txt'));
+      await unlink(tempDir);
+    } catch (error) {
+      console.warn(`⚠️ [COMBINE] Failed to clean up temp directory:`, error);
+    }
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,17 +108,29 @@ export async function POST(req: NextRequest) {
         console.log(`✅ [COMBINE DEBUG] Downloaded video ${i + 1}: ${blob.size} bytes`);
       }
 
+      // Create temporary output file
+      const tempDir = await mkdtemp(join(tmpdir(), 'video-output-'));
+      const outputPath = join(tempDir, `${combinedVideoId}.mp4`);
+      
       // Combine videos using FFmpeg
       console.log("🔗 [COMBINE DEBUG] Combining videos with FFmpeg...");
+      await combineVideosWithFFmpeg(videoBlobs, outputPath);
       
-      // For now, we'll create a simple combination by concatenating the videos
-      // In a production environment, you would use FFmpeg or similar
-      const combinedBlob = videoBlobs[0]; // For now, just use the first video
-      const combinedFile = new File([combinedBlob], `${combinedVideoId}.mp4`, { type: 'video/mp4' });
+      // Read the combined video file
+      const combinedVideoBuffer = await import('fs').then(fs => fs.promises.readFile(outputPath));
+      const combinedFile = new File([new Uint8Array(combinedVideoBuffer)], `${combinedVideoId}.mp4`, { type: 'video/mp4' });
       
       // Upload combined video to storage
       console.log("📤 [COMBINE DEBUG] Uploading combined video...");
       const combinedVideoUrl = await uploadVideo(combinedFile, combinedVideoId);
+      
+      // Clean up temporary output file
+      try {
+        await unlink(outputPath);
+        await unlink(tempDir);
+      } catch (error) {
+        console.warn(`⚠️ [COMBINE] Failed to clean up output files:`, error);
+      }
       
       // Save combined video to database
       await supabase

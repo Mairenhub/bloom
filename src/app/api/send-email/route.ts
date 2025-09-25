@@ -19,14 +19,14 @@ export async function POST(req: NextRequest) {
     console.log("📧 [EMAIL API] Sending to:", email, "Type:", type, "URL:", downloadUrl);
 
     const { data, error } = await resend.emails.send({
-      from: 'Levensloop <noreply@levensloop.com>',
+      from: 'Bloom <noreply@openiris.app>',
       to: [email],
       subject: type === 'notification' ? '🎬 Video Update Notification' : '🎬 Your AI Video is Ready!',
       html: type === 'notification' ? `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #333; font-size: 28px; margin-bottom: 10px;">🎬 Video Update</h1>
-            <p style="color: #666; font-size: 16px;">Thank you for using Levensloop AI Video Generator</p>
+            <p style="color: #666; font-size: 16px;">Thank you for using Bloom AI Video Generator</p>
           </div>
           
           <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #333; font-size: 28px; margin-bottom: 10px;">🎬 Your Video is Ready!</h1>
-            <p style="color: #666; font-size: 16px;">Thank you for using Levensloop AI Video Generator</p>
+            <p style="color: #666; font-size: 16px;">Thank you for using bloom AI Video Generator</p>
           </div>
           
           <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
             </p>
             <a 
               href="${downloadUrl}" 
+              download="bloom-video.mp4"
               style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;"
             >
               Download Video

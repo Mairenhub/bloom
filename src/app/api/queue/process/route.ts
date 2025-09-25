@@ -9,6 +9,30 @@ import {
   saveVideo
 } from "@/lib/supabase";
 import { enhancePromptForKlingAI } from "@/lib/openai";
+import sharp from "sharp";
+
+// Function to resize image to vertical phone dimensions (9:16 aspect ratio)
+async function resizeImageToVerticalPhone(imageBuffer: Buffer): Promise<Buffer> {
+  console.log(`🖼️ [RESIZE] Resizing image to 1080x1920 (9:16 aspect ratio)...`);
+  
+  try {
+    const resizedBuffer = await sharp(imageBuffer)
+      .resize(1080, 1920, {
+        fit: 'cover', // Crop to fill the entire area
+        position: 'center' // Center the crop
+      })
+      .jpeg({ quality: 90 }) // Convert to JPEG with good quality
+      .toBuffer();
+    
+    console.log(`✅ [RESIZE] Image resized successfully: ${resizedBuffer.length} bytes`);
+    return resizedBuffer;
+    
+  } catch (error) {
+    console.error(`❌ [RESIZE] Error resizing image:`, error);
+    // Return original buffer if resize fails
+    return imageBuffer;
+  }
+}
 
 const MAX_CONCURRENT_TASKS = 3;
 const ACCOUNT_ID = 'default';
@@ -64,15 +88,39 @@ export async function POST(req: NextRequest) {
           
           // Extract task data
           const taskData = task.task_data;
-          const { frameId, sessionId, image, imageTail, prompt, negativePrompt, mode, duration, aspectRatio, videoIndex, totalVideos } = taskData;
+          const { frameId, sessionId, duration, aspectRatio, videoIndex, totalVideos, fromImageUrl, toImageUrl } = taskData;
+          
+          if (!fromImageUrl || !toImageUrl) {
+            throw new Error("Image URLs not found in task");
+          }
+          
+          // Download images from Supabase Storage and convert to base64
+          console.log("📥 [QUEUE PROCESSOR] Downloading images from storage...");
+          const fromImageResponse = await fetch(fromImageUrl);
+          const toImageResponse = await fetch(toImageUrl);
+          
+          if (!fromImageResponse.ok || !toImageResponse.ok) {
+            throw new Error("Failed to download images from storage");
+          }
+          
+          const fromImageBuffer = await fromImageResponse.arrayBuffer();
+          const toImageBuffer = await toImageResponse.arrayBuffer();
+          
+          // Resize images to standard vertical phone dimensions (9:16 aspect ratio)
+          console.log("📐 [QUEUE PROCESSOR] Resizing images to 1080x1920 (9:16)...");
+          const fromImageResized = await resizeImageToVerticalPhone(Buffer.from(fromImageBuffer));
+          const toImageResized = await resizeImageToVerticalPhone(Buffer.from(toImageBuffer));
+          
+          const fromImage = fromImageResized.toString('base64');
+          const toImage = toImageResized.toString('base64');
           
           // Enhance the prompt using OpenAI
-          console.log("🤖 [QUEUE PROCESSOR] Enhancing prompt:", prompt);
-          const enhancedPromptResult = await enhancePromptForKlingAI(prompt, {
-            fromImage: image,
-            toImage: imageTail,
+          console.log("🤖 [QUEUE PROCESSOR] Enhancing prompt:", taskData.originalPrompt);
+          const enhancedPromptResult = await enhancePromptForKlingAI(taskData.originalPrompt, {
+            fromImage,
+            toImage,
             duration: duration || 5,
-            style: mode || "std"
+            style: aspectRatio || "16:9"
           });
           
           const enhancedPrompt = enhancedPromptResult.enhancedPrompt;
@@ -89,8 +137,8 @@ export async function POST(req: NextRequest) {
             headers: createKlingHeaders(),
             body: JSON.stringify({
               model_name: "kling-v2-1",
-              image: image, // Already base64 string
-              image_tail: imageTail, // Already base64 string
+              image: fromImage, // Already base64 string
+              image_tail: toImage, // Already base64 string
               prompt: enhancedPrompt,
               negative_prompt: 'no face swap, no different actor, no hairstyle change, no different clothes, no mask, no occlusion of face, no heavy motion blur',
               mode: "pro",
@@ -132,11 +180,11 @@ export async function POST(req: NextRequest) {
             status: taskStatus
           });
           
-          // Mark task as completed in queue
-          await markTaskAsCompleted(task.task_id);
+          // Mark task as processing (not completed yet - we need to poll KlingAI)
+          await markTaskAsProcessing(task.task_id);
           
-          console.log("✅ [QUEUE PROCESSOR] Task completed successfully:", task.task_id);
-          return { taskId: task.task_id, status: 'success', klingResult };
+          console.log("✅ [QUEUE PROCESSOR] Task submitted to KlingAI:", task.task_id, "KlingAI Task ID:", klingTaskId);
+          return { taskId: task.task_id, status: 'submitted', klingTaskId };
           
         } catch (error: any) {
           console.error("❌ [QUEUE PROCESSOR] Task failed:", task.task_id, error);

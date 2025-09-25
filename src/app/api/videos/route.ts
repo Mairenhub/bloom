@@ -3,13 +3,27 @@ import { getAllVideos, createVideoSession } from "@/lib/supabase";
 
 export async function GET(req: NextRequest) {
   try {
-    console.log("📋 [VIDEOS API] Getting all videos");
-    const videos = await getAllVideos();
+    const { searchParams } = new URL(req.url);
+    const sessionId = searchParams.get('sessionId');
     
-    return new Response(JSON.stringify({ videos }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" }
-    });
+    if (sessionId) {
+      console.log(`📋 [VIDEOS API] Getting videos for session: ${sessionId}`);
+      const { getVideosBySession } = await import('@/lib/supabase');
+      const videos = await getVideosBySession(sessionId);
+      
+      return new Response(JSON.stringify({ videos }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    } else {
+      console.log("📋 [VIDEOS API] Getting all videos");
+      const videos = await getAllVideos();
+      
+      return new Response(JSON.stringify({ videos }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
   } catch (error) {
     console.error("💥 [VIDEOS API] Error getting videos:", error);
     return new Response(JSON.stringify({ error: "Failed to get videos" }), {
