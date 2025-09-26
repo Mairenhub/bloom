@@ -4,8 +4,14 @@ export async function GET(req: NextRequest) {
   try {
     console.log("⏰ [QUEUE CRON] Starting scheduled queue processing");
     
+    // Get the current request URL to determine the base URL
+    const url = new URL(req.url);
+    const baseUrl = `${url.protocol}//${url.host}`;
+    
+    console.log("🌐 [QUEUE CRON] Using base URL:", baseUrl);
+    
     // Call the queue processor
-    const processorUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/queue/process`;
+    const processorUrl = `${baseUrl}/api/queue/process`;
     
     const response = await fetch(processorUrl, {
       method: 'POST',
@@ -15,7 +21,9 @@ export async function GET(req: NextRequest) {
     });
     
     if (!response.ok) {
-      throw new Error(`Queue processor failed: ${response.status}`);
+      const errorText = await response.text();
+      console.error("❌ [QUEUE CRON] Queue processor failed:", response.status, errorText);
+      throw new Error(`Queue processor failed: ${response.status} - ${errorText}`);
     }
     
     const result = await response.json();
