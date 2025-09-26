@@ -151,23 +151,21 @@ export async function combineVideosWithCloudinary(videoUrls: string[]): Promise<
     
     console.log(`🔗 [CLOUDINARY] Public IDs:`, publicIds);
     
-    // Use Cloudinary SDK to create the transformation URL
-    // For multiple videos, we need to chain transformations
+    // Build transformation chain manually (avoid SDK URL encoding issues)
     // We want videos in original order, so first video is base, others are concatenated after it
     const baseVideo = publicIds[0]; // First video is the base
     const layersToConcatenate = publicIds.slice(1); // Rest are concatenated after
     
-    // Build transformation chain manually using the SDK
-    let transformationString = '';
-    for (const publicId of layersToConcatenate) {
-      transformationString += `fl_splice,l_video:${publicId}/fl_layer_apply/`;
-    }
+    // Build the transformation chain manually
+    const transformations = layersToConcatenate.map(publicId => {
+      const cleanPublicId = publicId.replace(/\//g, ':');
+      return `fl_splice,l_video:${cleanPublicId}/fl_layer_apply`;
+    }).join('/');
     
-    const concatenatedUrl = cloudinary.url(`${transformationString}${baseVideo}`, {
-      resource_type: 'video'
-    });
+    const cleanBaseVideo = baseVideo.replace(/\//g, ':');
+    const concatenatedUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${transformations}/${cleanBaseVideo}`;
     
-    console.log(`🔗 [CLOUDINARY] SDK generated URL:`, concatenatedUrl);
+    console.log(`🔗 [CLOUDINARY] Manual URL construction:`, concatenatedUrl);
     
     // Download the combined video
     console.log(`📥 [CLOUDINARY] Downloading combined video...`);
