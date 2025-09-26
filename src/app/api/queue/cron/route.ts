@@ -40,9 +40,26 @@ export async function GET(req: NextRequest) {
     const result = await response.json();
     console.log("✅ [QUEUE CRON] Queue processing completed:", result);
     
+    // Also check status of videos that are being processed by KlingAI
+    console.log("🔍 [QUEUE CRON] Checking video status...");
+    const statusResponse = await fetch(`${baseUrl}/api/videos/check-status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    if (statusResponse.ok) {
+      const statusResult = await statusResponse.json();
+      console.log("✅ [QUEUE CRON] Video status check completed:", statusResult);
+    } else {
+      console.error("❌ [QUEUE CRON] Video status check failed:", statusResponse.status);
+    }
+    
     return new Response(JSON.stringify({
       message: "Cron job executed successfully",
-      result
+      result,
+      statusCheck: statusResponse.ok
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
