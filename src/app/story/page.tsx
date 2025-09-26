@@ -235,39 +235,72 @@ export default function StoryboardPage() {
       // Upload to Supabase Storage
       const { path, publicUrl } = await uploadImage(file, userId);
       
-      // Get image dimensions for metadata
-      const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
-        const img = document.createElement('img');
-        img.onload = () => {
-          resolve({ width: img.naturalWidth, height: img.naturalHeight });
-        };
-        img.src = publicUrl;
-      });
-      
-      // Save image record to database
-      await saveImageRecord({
-        userId,
-        bucket: 'uploads',
-        path,
-        mimeType: file.type,
-        sizeBytes: file.size,
-        width: dimensions.width,
-        height: dimensions.height,
-        metadata: {
-          originalName: file.name,
-          frameId
-        }
-      });
-      
       console.log(`✅ [IMAGE UPLOAD] Image uploaded successfully for frame ${frameId} (${Math.round(file.size / 1024)}KB)`);
+      console.log(`🔗 [IMAGE UPLOAD] Public URL: ${publicUrl}`);
       
-      setFrames(prev => prev.map(f => 
-        f.id === frameId ? { 
-          ...f, 
-          image: publicUrl, // for display with Next.js Image
-          imagePath: path // storage path for later base64 conversion
-        } : f
-      ));
+      // Update the frame immediately with the image URL
+      setFrames(prev => {
+        const updatedFrames = prev.map(f => 
+          f.id === frameId ? { 
+            ...f, 
+            image: publicUrl, // for display with Next.js Image
+            imagePath: path // storage path for later base64 conversion
+          } : f
+        );
+        console.log(`🔄 [FRAME UPDATE] Updated frame ${frameId} with image:`, publicUrl);
+        console.log(`📋 [FRAME UPDATE] All frames:`, updatedFrames);
+        return updatedFrames;
+      });
+      
+      // Get image dimensions for metadata (do this after updating the UI)
+      try {
+        const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+          const img = document.createElement('img');
+          img.crossOrigin = 'anonymous'; // Handle CORS if needed
+          img.onload = () => {
+            resolve({ width: img.naturalWidth, height: img.naturalHeight });
+          };
+          img.onerror = (error) => {
+            console.warn('⚠️ [IMAGE UPLOAD] Could not load image for dimensions, using defaults');
+            resolve({ width: 0, height: 0 });
+          };
+          img.src = publicUrl;
+        });
+        
+        // Save image record to database
+        await saveImageRecord({
+          userId,
+          bucket: 'uploads',
+          path,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          width: dimensions.width,
+          height: dimensions.height,
+          metadata: {
+            originalName: file.name,
+            frameId
+          }
+        });
+        
+        console.log(`📊 [IMAGE UPLOAD] Image dimensions: ${dimensions.width}x${dimensions.height}`);
+      } catch (dimensionError) {
+        console.warn('⚠️ [IMAGE UPLOAD] Could not get image dimensions:', dimensionError);
+        // Still save the record without dimensions
+        await saveImageRecord({
+          userId,
+          bucket: 'uploads',
+          path,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          width: 0,
+          height: 0,
+          metadata: {
+            originalName: file.name,
+            frameId
+          }
+        });
+      }
+      
     } catch (error) {
       console.error('❌ [IMAGE UPLOAD] Error uploading image:', error);
       alert(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -381,13 +414,17 @@ export default function StoryboardPage() {
                     <div className="flex-shrink-0">
                       <div className="w-64 h-128 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-gray-400 transition-colors">
                         {frame.image ? (
-                          <Image
-                            src={frame.image}
-                            alt={`Frame ${frame.id}`}
-                            width={128}
-                            height={128}
-                            className="w-full h-full object-cover rounded-lg"
-                          />
+                          <div className="w-full h-full relative">
+                            <Image
+                              src={frame.image}
+                              alt={`Frame ${frame.id}`}
+                              fill
+                              className="object-cover rounded-lg"
+                              unoptimized={true}
+                              onLoad={() => console.log(`✅ [IMAGE DISPLAY] Image loaded for frame ${frame.id}:`, frame.image)}
+                              onError={(e) => console.error(`❌ [IMAGE DISPLAY] Error loading image for frame ${frame.id}:`, frame.image, e)}
+                            />
+                          </div>
                         ) : uploadingImages.has(frame.id) ? (
                           <div className="flex flex-col items-center justify-center w-full h-full">
                             <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-2" />
