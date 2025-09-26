@@ -1,34 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enhancePromptForKlingAI } from '@/lib/openai';
-import { supabaseAdmin } from '@/lib/supabase-admin';
 
-// Helper function to upload base64 image to Supabase Storage
-async function uploadImageToStorage(base64Data: string, filename: string): Promise<string> {
-  // Remove data URL prefix if present
-  const base64 = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
-  
-  // Convert base64 to buffer
-  const buffer = Buffer.from(base64, 'base64');
-  
-  // Upload to Supabase Storage using admin client
-  const { data, error } = await supabaseAdmin.storage
-    .from('images')
-    .upload(filename, buffer, {
-      contentType: 'image/jpeg',
-      upsert: true
-    });
-  
-  if (error) {
-    throw new Error(`Failed to upload image: ${error.message}`);
-  }
-  
-  // Return the public URL
-  const { data: { publicUrl } } = supabaseAdmin.storage
-    .from('images')
-    .getPublicUrl(filename);
-  
-  return publicUrl;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,10 +76,10 @@ export async function POST(request: NextRequest) {
       const fromImageBase64 = frame.imageBase64;
       const toImageBase64 = nextFrame.imageBase64;
       
-      // Upload images to Supabase Storage for processing
-      console.log(`📤 [BATCH SUBMIT] Uploading images to storage for task ${taskId}...`);
-      const fromImageUrl = await uploadImageToStorage(fromImageBase64, `${taskId}-from.jpg`);
-      const toImageUrl = await uploadImageToStorage(toImageBase64, `${taskId}-to.jpg`);
+      // Use the existing image URLs from the uploaded images
+      console.log(`🔗 [BATCH SUBMIT] Using existing image URLs for task ${taskId}...`);
+      const fromImageUrl = frame.image; // Use the existing public URL
+      const toImageUrl = nextFrame.image; // Use the existing public URL
       
       // Enhance the prompt using the base64 images
       const enhancedData = await enhancePromptForKlingAI(transitionPrompt, {

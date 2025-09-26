@@ -671,19 +671,29 @@ export async function downloadImageAsBase64(path: string): Promise<string> {
     throw error;
   }
   
-  // Convert blob to base64
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Remove data:image/...;base64, prefix to get just the base64 string
-      const base64 = result.split(',')[1];
-      console.log("✅ [SUPABASE DEBUG] Image converted to base64");
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(data);
-  });
+  // Convert blob to base64 using Node.js Buffer (server-side)
+  if (typeof window === 'undefined') {
+    // Server-side: use Buffer
+    const arrayBuffer = await data.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+    console.log("✅ [SUPABASE DEBUG] Image converted to base64 (server-side)");
+    return base64;
+  } else {
+    // Client-side: use FileReader
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data:image/...;base64, prefix to get just the base64 string
+        const base64 = result.split(',')[1];
+        console.log("✅ [SUPABASE DEBUG] Image converted to base64 (client-side)");
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(data);
+    });
+  }
 }
 
 export async function getImagePublicUrl(path: string): Promise<string> {
