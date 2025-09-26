@@ -6,14 +6,6 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
-// Server-side client with service role key for admin operations
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-})
-
 // Storage operations for videos
 export async function uploadVideo(file: File, taskId: string): Promise<string> {
   console.log("📤 [SUPABASE DEBUG] Uploading video:", taskId);
