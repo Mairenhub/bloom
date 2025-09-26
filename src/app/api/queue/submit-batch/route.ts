@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enhancePromptForKlingAI } from '@/lib/openai';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 // Helper function to upload base64 image to Supabase Storage
 async function uploadImageToStorage(base64Data: string, filename: string): Promise<string> {

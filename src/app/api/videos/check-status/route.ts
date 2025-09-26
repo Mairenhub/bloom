@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getKlingBaseUrl, createKlingHeaders } from "@/lib/kling";
 
 export async function POST(request: NextRequest) {
