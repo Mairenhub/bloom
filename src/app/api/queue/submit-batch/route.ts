@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enhancePromptForKlingAI } from '@/lib/openai';
+import { isValidEmail } from '@/lib/utils';
 
 
 export async function POST(request: NextRequest) {
@@ -16,6 +17,11 @@ export async function POST(request: NextRequest) {
     } = body;
 
     console.log('🎬 [BATCH SUBMIT] Starting batch submission:', { sessionId, frameCount: framePairs.length });
+
+    // Validate email if provided
+    if (email && !isValidEmail(email)) {
+      return NextResponse.json({ error: 'Invalid email address format' }, { status: 400 });
+    }
 
     // Validate code first
     const codeResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/codes/validate`, {

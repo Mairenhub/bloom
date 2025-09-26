@@ -10,6 +10,7 @@ import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { Textarea } from "@/components/ui/textarea";
 import { uploadImage, saveImageRecord, getImagePublicUrl } from "@/lib/supabase";
+import { isValidEmail } from "@/lib/utils";
 
 type Frame = {
   id: string;
@@ -85,6 +86,13 @@ export default function StoryboardPage() {
       alert('Please enter your email address');
       return;
     }
+    
+    // Validate email format
+    if (!isValidEmail(email)) {
+      alert('Please enter a valid email address');
+      return;
+    }
+    
     // Validate code next
     if (!code.trim()) {
       alert('Please enter a code first');
