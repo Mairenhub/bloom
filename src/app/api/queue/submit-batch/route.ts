@@ -72,22 +72,10 @@ export async function POST(request: NextRequest) {
       // Get transition prompt
       const transitionPrompt = transitionPrompts[`${frame.id}-${nextFrame.id}`] || `Smooth transition from frame ${frame.id} to ${nextFrame.id}`;
       
-      // Use the decompressed base64 images directly
-      const fromImageBase64 = frame.imageBase64;
-      const toImageBase64 = nextFrame.imageBase64;
-      
       // Use the existing image URLs from the uploaded images
       console.log(`🔗 [BATCH SUBMIT] Using existing image URLs for task ${taskId}...`);
       const fromImageUrl = frame.image; // Use the existing public URL
       const toImageUrl = nextFrame.image; // Use the existing public URL
-      
-      // Enhance the prompt using the base64 images
-      const enhancedData = await enhancePromptForKlingAI(transitionPrompt, {
-        fromImage: fromImageBase64,
-        toImage: toImageBase64,
-        duration: parseInt(duration),
-        style: aspectRatio
-      });
       
       const taskData = {
         taskId,
@@ -95,7 +83,7 @@ export async function POST(request: NextRequest) {
         frameId: frame.id,
         nextFrameId: nextFrame.id,
         originalPrompt: transitionPrompt,
-        enhancedPrompt: enhancedData.enhancedPrompt,
+        // We will enhance prompt during processing after fetching images
         duration,
         aspectRatio,
         videoIndex: i + 1,

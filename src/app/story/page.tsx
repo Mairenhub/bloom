@@ -80,7 +80,12 @@ export default function StoryboardPage() {
   };
 
   const handleModalSubmit = async () => {
-    // Validate code first
+    // Validate email first
+    if (!email.trim()) {
+      alert('Please enter your email address');
+      return;
+    }
+    // Validate code next
     if (!code.trim()) {
       alert('Please enter a code first');
       return;
@@ -128,54 +133,18 @@ export default function StoryboardPage() {
         return;
       }
     }
-
-      // Convert stored images to base64 for API submission
-      console.log('📤 [STORY] Converting stored images to base64 for API submission...');
-      
-      // Get all image paths
-      const imagePaths = candidates.map(f => f.imagePath!);
-      
-      // Convert to base64
-      const base64Response = await fetch('/api/images/to-base64', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imagePaths })
-      });
-      
-      if (!base64Response.ok) {
-        throw new Error('Failed to convert images to base64');
-      }
-      
-      const { images: base64Images } = await base64Response.json();
-      
-      // Create a map of path to base64
-      const pathToBase64 = new Map();
-      base64Images.forEach((img: { path: string; base64: string }) => {
-        pathToBase64.set(img.path, img.base64);
-      });
-      
-      const preparedFramePairs = framePairs.map(([frame, nextFrame]) => {
-        const fromImageBase64 = pathToBase64.get(frame.imagePath!) || '';
-        const toImageBase64 = pathToBase64.get(nextFrame.imagePath!) || '';
-        
-        return [
-          { ...frame, imageBase64: fromImageBase64 },
-          { ...nextFrame, imageBase64: toImageBase64 }
-        ];
-      });
-
-      // Submit to server-side batch processing with compressed base64 images
+      // Submit to server-side batch processing with URLs only (no base64 from client)
       const response = await fetch('/api/queue/submit-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: `session-${Date.now()}`,
-          framePairs: preparedFramePairs,
+          framePairs,
           transitionPrompts,
           duration: parseInt(duration),
           aspectRatio,
           code: code.trim(),
-          email: email || undefined
+          email: email
         })
       });
 
@@ -614,7 +583,7 @@ export default function StoryboardPage() {
                 {/* Email Input */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address (Optional)
+                    Email Address
                   </label>
                   <Input
                     type="email"
@@ -622,6 +591,7 @@ export default function StoryboardPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="your@email.com"
                     className="w-full"
+                    required
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     We'll notify you when your video is ready
@@ -658,7 +628,7 @@ export default function StoryboardPage() {
                 <div className="flex gap-3 pt-4">
                   <Button
                     onClick={handleModalSubmit}
-                    disabled={!code.trim() || isValidatingCode || submissionStatus === 'submitting'}
+                    disabled={!email.trim() || !code.trim() || isValidatingCode || submissionStatus === 'submitting'}
                     className="flex-1"
                   >
                     {submissionStatus === 'submitting' ? (
