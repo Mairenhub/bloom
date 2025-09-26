@@ -4,8 +4,15 @@ export async function GET(req: NextRequest) {
   try {
     console.log("⏰ [QUEUE CRON] Starting scheduled queue processing");
     
-    // Use the production URL directly to avoid deployment protection issues
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://bloom-beta-kohl.vercel.app';
+    // Debug environment variables
+    console.log("🔍 [QUEUE CRON] Environment check:", {
+      NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+      VERCEL_URL: process.env.VERCEL_URL,
+      NODE_ENV: process.env.NODE_ENV
+    });
+    
+    // Always use the production URL to avoid deployment protection issues
+    const baseUrl = 'https://bloom-beta-kohl.vercel.app';
     
     console.log("🌐 [QUEUE CRON] Using base URL:", baseUrl);
     
