@@ -9,20 +9,22 @@ import {
   saveVideo
 } from "@/lib/supabase";
 import { enhancePromptForKlingAI } from "@/lib/openai";
-import sharp from "sharp";
+import Jimp from "jimp";
 
 // Function to resize image to vertical phone dimensions (9:16 aspect ratio)
 async function resizeImageToVerticalPhone(imageBuffer: Buffer): Promise<Buffer> {
   console.log(`🖼️ [RESIZE] Resizing image to 1080x1920 (9:16 aspect ratio)...`);
   
   try {
-    const resizedBuffer = await sharp(imageBuffer)
-      .resize(1080, 1920, {
-        fit: 'cover', // Crop to fill the entire area
-        position: 'center' // Center the crop
-      })
-      .jpeg({ quality: 90 }) // Convert to JPEG with good quality
-      .toBuffer();
+    // Load image with Jimp
+    const image = await Jimp.read(imageBuffer);
+    
+    // Resize and crop to 1080x1920 (9:16 aspect ratio)
+    // Using cover mode: resize to fill the area, then crop
+    const resizedImage = image.cover(1080, 1920, Jimp.HORIZONTAL_ALIGN_CENTER | Jimp.VERTICAL_ALIGN_MIDDLE);
+    
+    // Convert to JPEG with 90% quality
+    const resizedBuffer = await resizedImage.quality(90).getBufferAsync(Jimp.MIME_JPEG);
     
     console.log(`✅ [RESIZE] Image resized successfully: ${resizedBuffer.length} bytes`);
     return resizedBuffer;

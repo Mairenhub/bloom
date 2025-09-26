@@ -21,19 +21,6 @@ export async function GET(req: NextRequest) {
     
     console.log("📞 [QUEUE CRON] Calling:", processorUrl);
     
-    // First try a GET request to see if the endpoint is accessible
-    console.log("🔍 [QUEUE CRON] Testing GET request first...");
-    const getResponse = await fetch(processorUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-    
-    console.log("📊 [QUEUE CRON] GET Response status:", getResponse.status);
-    
-    // Now try the POST request
-    console.log("🔍 [QUEUE CRON] Now trying POST request...");
     const response = await fetch(processorUrl, {
       method: 'POST',
       headers: {
