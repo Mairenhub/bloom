@@ -4,9 +4,8 @@ export async function GET(req: NextRequest) {
   try {
     console.log("⏰ [QUEUE CRON] Starting scheduled queue processing");
     
-    // Get the current request URL to determine the base URL
-    const url = new URL(req.url);
-    const baseUrl = `${url.protocol}//${url.host}`;
+    // Use the production URL directly to avoid deployment protection issues
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://bloom-beta-kohl.vercel.app';
     
     console.log("🌐 [QUEUE CRON] Using base URL:", baseUrl);
     
