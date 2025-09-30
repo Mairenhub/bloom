@@ -21,18 +21,14 @@ type Frame = {
 
 
 
-function useInitialFrames(): Frame[] {
-  return useMemo(
-    () => [
+export default function StoryboardPage() {
+  const [frames, setFrames] = useState<Frame[]>(() => {
+    // Initialize with frames 1 and 2, normalized to be sequential
+    return [
       { id: "1" },
       { id: "2" }
-    ],
-    []
-  );
-}
-
-export default function StoryboardPage() {
-  const [frames, setFrames] = useState<Frame[]>(useInitialFrames());
+    ];
+  });
   const [isGenerating, setIsGenerating] = useState(false);
   const [duration, setDuration] = useState("5");
   const [aspectRatio, setAspectRatio] = useState("16:9");
@@ -293,8 +289,15 @@ export default function StoryboardPage() {
 
   const addFrame = () => {
     if (frames.length >= 5) return;
-    const newId = (Math.max(...frames.map(f => parseInt(f.id))) + 1).toString();
-    setFrames(prev => [...prev, { id: newId }]);
+    // Add new frame and renumber all frames to be sequential
+    setFrames(prev => {
+      const newFrames = [...prev, { id: "temp" }]; // temporary ID
+      // Renumber all frames to be sequential (1, 2, 3, 4...)
+      return newFrames.map((frame, index) => ({
+        ...frame,
+        id: (index + 1).toString()
+      }));
+    });
   };
 
   const removeFrame = (frameId: string) => {
@@ -312,7 +315,14 @@ export default function StoryboardPage() {
       return newPrompts;
     });
     
-    setFrames(prev => prev.filter(f => f.id !== frameId));
+    setFrames(prev => {
+      // Remove the frame and renumber all remaining frames
+      const filteredFrames = prev.filter(f => f.id !== frameId);
+      return filteredFrames.map((frame, index) => ({
+        ...frame,
+        id: (index + 1).toString()
+      }));
+    });
   };
 
   const moveFrame = (frameId: string, direction: 'left' | 'right') => {
@@ -324,7 +334,14 @@ export default function StoryboardPage() {
     
     const newFrames = [...frames];
     [newFrames[currentIndex], newFrames[newIndex]] = [newFrames[newIndex], newFrames[currentIndex]];
-    setFrames(newFrames);
+    
+    // Renumber frame IDs to match their new positions (1, 2, 3, 4...)
+    const renumberedFrames = newFrames.map((frame, index) => ({
+      ...frame,
+      id: (index + 1).toString()
+    }));
+    
+    setFrames(renumberedFrames);
     
     // Clear transition prompts when frames are reordered since the relationships change
     setTransitionPrompts({});
@@ -368,17 +385,6 @@ export default function StoryboardPage() {
               <h2 className="text-xl font-semibold text-gray-900">
                 Storyboard ({uploadedCount}/{frames.length} photos uploaded)
             </h2>
-              <div className="flex gap-2">
-                <Button 
-                  onClick={addFrame}
-                  variant="outline" 
-                  size="sm"
-                  disabled={frames.length >= 5}
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add Frame ({frames.length}/5)
-                </Button>
-              </div>
             </div>
 
             <ScrollArea className="w-full" style={{ willChange: 'transform' }}>
@@ -440,37 +446,52 @@ export default function StoryboardPage() {
 
 
                     {index < frames.length - 1 && (
-                      <div className="flex-shrink-0 w-80 flex items-center gap-2">
-                        <div className="flex-col items-center">
-                         <Button
-                        onClick={() => moveFrame(frame.id, 'left')}
-                        variant="outline"
-                        size="sm"
-                        className="p-2 rounded-full"
-                          >
-                            <ArrowLeftRight className="w-4 h-4" />
-                          </Button> 
-                        <div className="bg-gray-50 p-4 rounded-lg border">
-
-                     
+                      <div className="flex-shrink-0 w-64 flex flex-col items-center gap-4">
+                        {/* Switch Button - Centered */}
+                        <Button
+                          onClick={() => moveFrame(frame.id, 'right')}
+                          variant="outline"
+                          size="sm"
+                          className="p-2 rounded-full bg-white border-2 border-gray-300 hover:border-gray-400 shadow-sm"
+                          title="Swap with next frame"
+                        >
+                          <ArrowLeftRight className="w-4 h-4" />
+                        </Button>
+                        
+                        {/* Prompt Box */}
+                        <div className="bg-gray-50 p-3 rounded-lg border w-full">
                           <Textarea
                             id={`prompt-${frame.id}-${frames[index + 1].id}`}
                             value={transitionPrompts[`${frame.id}-${frames[index + 1].id}`] || ""}
                             onChange={(e) => handleTransitionPromptChange(frame.id, frames[index + 1].id, e.target.value)}
-                            placeholder="e.g., 'The person walks from left to right, changing from casual clothes to formal wear'"
-                            className="w-full h-20 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-sm"
+                            placeholder="Describe the movement..."
+                            className="w-full h-16 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-sm"
                             disabled={isGenerating}
                           />
                           <p className="text-xs text-gray-500 mt-1">
-                            Describe the movement between these frames
+                            Movement between frames
                           </p>
-                        </div>
                         </div>
                       </div>
                     )}
 
                       </div>
                 ))}
+                
+                {/* Add Frame Button */}
+                {frames.length < 5 && (
+                  <div className="flex-shrink-0 flex items-center">
+                    <Button
+                      onClick={addFrame}
+                      variant="outline"
+                      size="sm"
+                      className="w-12 h-12 rounded-full p-0 border-2 border-dashed border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+                      title="Add Frame"
+                    >
+                      <Plus className="w-6 h-6 text-gray-400" />
+                    </Button>
+                  </div>
+                )}
                       </div>
               <ScrollBar orientation="horizontal" />
             </ScrollArea>

@@ -1,16 +1,17 @@
 import { NextRequest } from "next/server";
-import { getQueueStatus, getQueuePosition } from "@/lib/supabase";
+import { getQueueStatus, getQueueStatusForSession, getQueuePosition } from "@/lib/supabase";
 
 export async function GET(req: NextRequest) {
   try {
-
-    
     const { searchParams } = new URL(req.url);
     const taskId = searchParams.get('taskId');
+    const sessionId = searchParams.get('sessionId');
     const accountId = searchParams.get('accountId') || 'default';
     
-    // Get overall queue status
-    const queueStatus = await getQueueStatus(accountId);
+    // Get queue status - either for specific session or overall
+    const queueStatus = sessionId 
+      ? await getQueueStatusForSession(sessionId, accountId)
+      : await getQueueStatus(accountId);
     
     // If taskId is provided, get position for that specific task
     let position = null;
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     
     const response = {
       accountId,
+      sessionId: sessionId || null,
       status: {
         queued: statusMap.queued || 0,
         processing: statusMap.processing || 0,
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
       (response as any).position = position;
     }
     
+    console.log(`📊 [QUEUE STATUS] ${sessionId ? `Session ${sessionId}:` : 'Global:'}`, response.status);
     
     return new Response(JSON.stringify(response), {
       status: 200,

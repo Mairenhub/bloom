@@ -404,6 +404,51 @@ export async function getQueueStatus(accountId: string = 'default') {
   return result;
 }
 
+export async function getQueueStatusForSession(sessionId: string, accountId: string = 'default') {
+  console.log("📊 [SUPABASE DEBUG] Getting queue status for session:", sessionId, accountId);
+  
+  // Get all queue items for the account and session
+  const { data, error } = await supabase
+    .from('video_queue')
+    .select('status, frame_id')
+    .eq('account_id', accountId)
+    .eq('session_id', sessionId)
+    .in('status', ['queued', 'processing', 'completed', 'failed']);
+  
+  if (error) {
+    console.error("❌ [SUPABASE DEBUG] Error getting queue status for session:", error);
+    throw error;
+  }
+  
+  // Count statuses manually
+  const statusCounts = {
+    queued: 0,
+    processing: 0,
+    completed: 0,
+    failed: 0
+  };
+  
+  const frameIds: string[] = [];
+  
+  data?.forEach(item => {
+    if (item.status in statusCounts) {
+      statusCounts[item.status as keyof typeof statusCounts]++;
+    }
+    if (item.frame_id) {
+      frameIds.push(item.frame_id);
+    }
+  });
+  
+  // Convert to array format for compatibility
+  const result = Object.entries(statusCounts).map(([status, count]) => ({
+    status,
+    count
+  }));
+  
+  console.log("📄 [SUPABASE DEBUG] Session queue status:", result, "Frame IDs:", frameIds);
+  return result;
+}
+
 export async function getQueuePosition(taskId: string, accountId: string = 'default') {
   console.log("🔍 [SUPABASE DEBUG] Getting queue position for task:", taskId);
   

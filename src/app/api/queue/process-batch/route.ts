@@ -113,18 +113,41 @@ async function handleBatchCompletion(sessionId: string, completedCount: number, 
   try {
     console.log('🎉 [BATCH COMPLETE] Handling completion for session:', sessionId);
 
-    // Get all completed videos for this session
+    // Get all videos for this session (completed, failed, processing)
     const videosResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/videos?sessionId=${sessionId}`);
     if (!videosResponse.ok) {
       throw new Error('Failed to get videos for session');
     }
 
     const videosData = await videosResponse.json();
-    const completedVideos = videosData.videos?.filter((video: any) => 
-      video.session_id === sessionId && 
+    const allVideos = videosData.videos?.filter((video: any) => 
+      video.session_id === sessionId
+    ) || [];
+
+    const completedVideos = allVideos.filter((video: any) => 
       video.status === 'completed' && 
       video.video_url
-    ) || [];
+    );
+
+    const failedVideos = allVideos.filter((video: any) => 
+      video.status === 'failed'
+    );
+
+    const processingVideos = allVideos.filter((video: any) => 
+      video.status === 'processing' || video.status === 'submitted'
+    );
+
+    console.log(`📊 [BATCH COMPLETE] Video status breakdown:`, {
+      completed: completedVideos.length,
+      failed: failedVideos.length,
+      processing: processingVideos.length,
+      total: allVideos.length
+    });
+
+    // Log frame IDs for debugging
+    console.log(`🔍 [BATCH COMPLETE] Frame IDs - Completed:`, completedVideos.map((v: any) => v.frame_id));
+    console.log(`🔍 [BATCH COMPLETE] Frame IDs - Failed:`, failedVideos.map((v: any) => v.frame_id));
+    console.log(`🔍 [BATCH COMPLETE] Frame IDs - Processing:`, processingVideos.map((v: any) => v.frame_id));
 
     if (completedVideos.length === 0) {
       console.log('⚠️ [BATCH COMPLETE] No completed videos found for session:', sessionId);
@@ -141,6 +164,59 @@ async function handleBatchCompletion(sessionId: string, completedCount: number, 
     });
 
     console.log(`🔄 [BATCH COMPLETE] Videos sorted by frame order:`, sortedVideos.map((v: any) => `frame_${v.frame_id}`));
+
+    // Check for missing frames and validate completion
+    const completedFrameIds = sortedVideos.map((v: any) => parseInt(v.frame_id)).sort((a: any, b: any) => a - b);
+    
+    // Find the actual range of frame IDs that should exist
+    const minFrameId = Math.min(...completedFrameIds);
+    const maxFrameId = Math.max(...completedFrameIds);
+    const expectedFrameIds = Array.from({ length: maxFrameId - minFrameId + 1 }, (_, i) => minFrameId + i);
+    const missingFrameIds = expectedFrameIds.filter(id => !completedFrameIds.includes(id));
+    
+    if (missingFrameIds.length > 0) {
+      console.warn(`⚠️ [BATCH COMPLETE] Missing frame IDs:`, missingFrameIds);
+      console.warn(`⚠️ [BATCH COMPLETE] This will result in a video with gaps!`);
+      
+      // Check if any missing frames are still processing
+      const missingFramesStillProcessing = missingFrameIds.some(frameId => 
+        processingVideos.some((v: any) => parseInt(v.frame_id) === frameId)
+      );
+      
+      if (missingFramesStillProcessing) {
+        console.log(`⏳ [BATCH COMPLETE] Some missing frames are still processing, waiting...`);
+        return; // Don't complete the batch yet
+      } else {
+        // Check if we can retry failed frames
+        const failedFrames = failedVideos.filter((v: any) => 
+          missingFrameIds.includes(parseInt(v.frame_id))
+        );
+        
+        if (failedFrames.length > 0) {
+          console.log(`🔄 [BATCH COMPLETE] Attempting to retry ${failedFrames.length} failed frames...`);
+          
+          try {
+            const retryResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/queue/retry-failed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId })
+            });
+            
+            if (retryResponse.ok) {
+              const retryData = await retryResponse.json();
+              console.log(`✅ [BATCH COMPLETE] Retry initiated:`, retryData);
+              return; // Wait for retry to complete
+            } else {
+              console.error(`❌ [BATCH COMPLETE] Retry failed:`, await retryResponse.text());
+            }
+          } catch (retryError) {
+            console.error(`❌ [BATCH COMPLETE] Retry error:`, retryError);
+          }
+        }
+        
+        console.warn(`❌ [BATCH COMPLETE] Missing frames are not processing, proceeding with incomplete video`);
+      }
+    }
 
     // Extract video URLs in correct order
     const videoUrls = sortedVideos.map((video: any) => video.video_url);
