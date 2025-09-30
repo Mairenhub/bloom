@@ -52,9 +52,6 @@ export default function StoryboardPage() {
   // Email and result state
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [email, setEmail] = useState('');
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
-  const [downloadLink, setDownloadLink] = useState('');
   const [showResultScreen, setShowResultScreen] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
   const [queueInfo, setQueueInfo] = useState<{
@@ -227,13 +224,13 @@ export default function StoryboardPage() {
       
       // Get image dimensions for metadata (do this after updating the UI)
       try {
-        const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
           const img = document.createElement('img');
           img.crossOrigin = 'anonymous'; // Handle CORS if needed
           img.onload = () => {
             resolve({ width: img.naturalWidth, height: img.naturalHeight });
           };
-          img.onerror = (error) => {
+          img.onerror = () => {
             console.warn('⚠️ [IMAGE UPLOAD] Could not load image for dimensions, using defaults');
             resolve({ width: 0, height: 0 });
           };
@@ -731,8 +728,6 @@ export default function StoryboardPage() {
                   <Button
                     onClick={() => {
                       setShowResultScreen(false);
-                      setEmailSent(false);
-                      setDownloadLink('');
                       setEmail('');
                       setSubmissionStatus('idle');
                       setQueueInfo(null);

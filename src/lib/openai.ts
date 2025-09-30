@@ -30,7 +30,7 @@ function combineWithBaseTraining(userInput: string): string {
 }
 
 // Enhanced function to intelligently combine prompts using OpenAI
-async function combinePromptsWithAI(userInput: string, context?: {
+async function combinePromptsWithAI(userInput: string, _context?: {
   fromImage?: string;
   toImage?: string;
   duration?: number;

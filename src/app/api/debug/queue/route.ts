@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       queueStatusBreakdown: {},
       videoStatusBreakdown: {},
       frameIdAnalysis: {},
-      issues: []
+      issues: [] as string[]
     };
 
     // Queue status breakdown
