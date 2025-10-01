@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_KEY,
+  apiKey: process.env.OPENAI_KEY,
 });
 
 // Base training prompt for cinematic character transitions
@@ -36,7 +36,7 @@ async function combinePromptsWithAI(userInput: string, _context?: {
   duration?: number;
   style?: string;
 }): Promise<string> {
-  if (!process.env.NEXT_PUBLIC_OPENAI_KEY) {
+  if (!process.env.OPENAI_KEY) {
     console.log("⚠️ [OPENAI DEBUG] No OpenAI API key found, using basic combination");
     return combineWithBaseTraining(userInput);
   }
@@ -99,7 +99,7 @@ Return ONLY the enhanced prompt, no explanations or additional text.`;
 export async function generateBatchPrompts(transitions: TransitionPrompt[]): Promise<BatchPromptResult> {
   console.log("🤖 [OPENAI DEBUG] Generating batch prompts for", transitions.length, "transitions");
   
-  if (!process.env.NEXT_PUBLIC_OPENAI_KEY) {
+  if (!process.env.OPENAI_KEY) {
     console.log("⚠️ [OPENAI DEBUG] No OpenAI API key found, using basic training");
     return {
       transitions: transitions.map(t => ({

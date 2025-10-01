@@ -1,11 +1,19 @@
 import { NextRequest } from "next/server";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.NEXT_PUBLIC_RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: NextRequest) {
   try {
     console.log("📧 [EMAIL API] Sending email with download link");
+    
+    // Check if Resend API key is configured
+    if (!process.env.RESEND_API_KEY) {
+      console.error("❌ [EMAIL API] RESEND_API_KEY environment variable is not set");
+      return new Response(JSON.stringify({ 
+        error: "Email service not configured" 
+      }), { status: 500 });
+    }
     
     const body = await req.json();
     const { email, downloadUrl, sessionId, type = 'download' } = body;

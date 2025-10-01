@@ -53,20 +53,10 @@ export async function POST(request: NextRequest) {
     const redeemedData = await redeemResponse.json();
     console.log('✅ [BATCH SUBMIT] Code redeemed successfully:', redeemedData);
 
-    // Create batch job record
-    const batchJob = {
-      sessionId,
-      status: 'queued',
-      totalVideos: framePairs.length,
-      completedVideos: 0,
-      email: email || null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    // Store batch job in database (you'll need to create this table)
-    // For now, we'll store it in a simple way
-    console.log('📝 [BATCH SUBMIT] Created batch job:', batchJob);
+    // Create video session record
+    const { createVideoSession } = await import('@/lib/supabase');
+    await createVideoSession(sessionId, framePairs.length, email);
+    console.log('📝 [BATCH SUBMIT] Created video session:', { sessionId, totalVideos: framePairs.length, email });
 
     // Submit each video to the queue
     const videoTasks = [];

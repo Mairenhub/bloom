@@ -55,11 +55,28 @@ export async function GET(req: NextRequest) {
     } else {
       console.error("❌ [QUEUE CRON] Video status check failed:", statusResponse.status);
     }
+
+    // Check for completed batches and send emails
+    console.log("📧 [QUEUE CRON] Checking for completed batches...");
+    const completedResponse = await fetch(`${baseUrl}/api/queue/check-completed`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    if (completedResponse.ok) {
+      const completedResult = await completedResponse.json();
+      console.log("✅ [QUEUE CRON] Completed batch check:", completedResult);
+    } else {
+      console.error("❌ [QUEUE CRON] Completed batch check failed:", completedResponse.status);
+    }
     
     return new Response(JSON.stringify({
       message: "Cron job executed successfully",
       result,
-      statusCheck: statusResponse.ok
+      statusCheck: statusResponse.ok,
+      completedCheck: completedResponse.ok
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }

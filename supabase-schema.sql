@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS video_sessions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   total_videos INTEGER DEFAULT 0,
   completed_videos INTEGER DEFAULT 0,
+  email TEXT,
+  email_sent BOOLEAN DEFAULT FALSE,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

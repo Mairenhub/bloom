@@ -20,15 +20,15 @@ export type KlingTaskResponse = {
 
 export function getKlingBaseUrl(): string {
   // Use the KlingAI API URL for external API calls
-  const baseUrl = process.env.NEXT_PUBLIC_KLINGAI_URL || "https://api-singapore.klingai.com";
+  const baseUrl = process.env.KLINGAI_URL || "https://api-singapore.klingai.com";
   return baseUrl;
 }
 
 import jwt from 'jsonwebtoken';
 
 export function buildJWTToken(): string | undefined {
-  const accessKey = process.env.NEXT_PUBLIC_KLING_ACCESS_KEY;
-  const secretKey = process.env.NEXT_PUBLIC_KLING_SECRET_KEY;
+  const accessKey = process.env.KLING_ACCESS_KEY;
+  const secretKey = process.env.KLING_SECRET_KEY;
   
   
   if (!accessKey || !secretKey) {

@@ -152,15 +152,17 @@ export async function updateVideoStatus(taskId: string, status: string, videoUrl
 }
 
 // Session operations
-export async function createVideoSession(sessionId: string, totalVideos: number) {
-  console.log("🎬 [SUPABASE DEBUG] Creating video session:", { sessionId, totalVideos });
+export async function createVideoSession(sessionId: string, totalVideos: number, email?: string) {
+  console.log("🎬 [SUPABASE DEBUG] Creating video session:", { sessionId, totalVideos, email });
   
   const { data, error } = await supabase
     .from('video_sessions')
     .upsert({
       session_id: sessionId,
       total_videos: totalVideos,
-      completed_videos: 0
+      completed_videos: 0,
+      email: email || null,
+      email_sent: false
     })
     .select()
     .single();
