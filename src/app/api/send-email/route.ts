@@ -4,8 +4,9 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
   try {
-    console.log("📧 [EMAIL API] Sending email with download link");
+    console.log("📧 [EMAIL API] Starting email send process");
     
     // Check if Resend API key is configured
     if (!process.env.RESEND_API_KEY) {
@@ -19,12 +20,25 @@ export async function POST(req: NextRequest) {
     const { email, downloadUrl, sessionId, type = 'download' } = body;
     
     if (!email) {
+      console.error("❌ [EMAIL API] Missing email parameter");
       return new Response(JSON.stringify({ 
         error: "email is required" 
       }), { status: 400 });
     }
 
-    console.log("📧 [EMAIL API] Sending to:", email, "Type:", type, "URL:", downloadUrl);
+    if (!downloadUrl && type === 'download') {
+      console.error("❌ [EMAIL API] Missing downloadUrl for download type email");
+      return new Response(JSON.stringify({ 
+        error: "downloadUrl is required for download type emails" 
+      }), { status: 400 });
+    }
+
+    console.log("📧 [EMAIL API] Processing email request:", { 
+      email: email.substring(0, 3) + '***', // Mask email for privacy
+      type, 
+      sessionId,
+      hasDownloadUrl: !!downloadUrl 
+    });
 
     const { data, error } = await resend.emails.send({
       from: 'Bloom <noreply@openiris.app>',
@@ -84,27 +98,47 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      console.error("❌ [EMAIL API] Resend error:", error);
+      const duration = Date.now() - startTime;
+      console.error("❌ [EMAIL API] Resend error:", {
+        error,
+        duration: `${duration}ms`,
+        email: email.substring(0, 3) + '***',
+        sessionId
+      });
       return new Response(JSON.stringify({ 
-        error: "Failed to send email" 
+        error: "Failed to send email",
+        details: error
       }), { status: 500 });
     }
 
-    console.log("✅ [EMAIL API] Email sent successfully:", data);
+    const duration = Date.now() - startTime;
+    console.log("✅ [EMAIL API] Email sent successfully:", {
+      messageId: data?.id,
+      duration: `${duration}ms`,
+      email: email.substring(0, 3) + '***',
+      sessionId
+    });
 
     return new Response(JSON.stringify({
       success: true,
       messageId: data?.id,
-      message: "Email sent successfully"
+      message: "Email sent successfully",
+      duration: `${duration}ms`
     }), { 
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
 
   } catch (error: unknown) {
-    console.error("💥 [EMAIL API] Error:", error);
+    const duration = Date.now() - startTime;
+    console.error("💥 [EMAIL API] Unexpected error:", {
+      error: error instanceof Error ? error.message : error,
+      duration: `${duration}ms`,
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Failed to send email" 
+      error: error instanceof Error ? error.message : "Failed to send email",
+      duration: `${duration}ms`
     }), { status: 500 });
   }
 }

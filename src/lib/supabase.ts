@@ -202,7 +202,7 @@ export async function updateSessionProgress(sessionId: string) {
     .from('videos')
     .select('*', { count: 'exact', head: true })
     .eq('session_id', sessionId)
-    .eq('status', 'succeed');
+    .eq('status', 'completed');
   
   if (countError) {
     console.error("❌ [SUPABASE DEBUG] Error counting videos:", countError);

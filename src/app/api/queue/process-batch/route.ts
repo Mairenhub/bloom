@@ -245,25 +245,54 @@ async function handleBatchCompletion(sessionId: string, completedCount: number, 
 
     // Send email notification if email provided
     if (email && downloadLink) {
-      try {
-        const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/send-email`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            downloadUrl: downloadLink,
-            sessionId,
-            type: 'download'
-          })
-        });
+      let emailSent = false;
+      let emailError = null;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`📧 [BATCH COMPLETE] Attempting to send email (attempt ${attempt}/3) to:`, email);
+          
+          const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/send-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              downloadUrl: downloadLink,
+              sessionId,
+              type: 'download'
+            })
+          });
 
-        if (emailResponse.ok) {
-          console.log('📧 [BATCH COMPLETE] Email sent successfully to:', email);
-        } else {
-          console.error('❌ [BATCH COMPLETE] Failed to send email:', await emailResponse.text());
+          if (emailResponse.ok) {
+            console.log('✅ [BATCH COMPLETE] Email sent successfully to:', email);
+            emailSent = true;
+            break;
+          } else {
+            const errorText = await emailResponse.text();
+            emailError = `HTTP ${emailResponse.status}: ${errorText}`;
+            console.error(`❌ [BATCH COMPLETE] Email attempt ${attempt} failed:`, emailError);
+            
+            if (attempt < 3) {
+              const delay = attempt * 2000; // 2s, 4s delay
+              console.log(`⏳ [BATCH COMPLETE] Waiting ${delay}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+        } catch (error) {
+          emailError = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`❌ [BATCH COMPLETE] Email attempt ${attempt} error:`, emailError);
+          
+          if (attempt < 3) {
+            const delay = attempt * 2000;
+            console.log(`⏳ [BATCH COMPLETE] Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
         }
-      } catch (emailError) {
-        console.error('❌ [BATCH COMPLETE] Email sending error:', emailError);
+      }
+
+      if (!emailSent) {
+        console.error('❌ [BATCH COMPLETE] Failed to send email after 3 attempts:', emailError);
+        // Don't throw here as we don't want to fail the entire process just because email failed
       }
     }
 
